@@ -62,9 +62,12 @@ t = (1:length(meanTSeries))/sampleRate;
 mlrSmartfig('motexWidefieldAnalysis1','reuse');clf
 subplot(2,1,1);
 myerrorbar(t,meanTSeries,'yError',steTSeries,'yErrorBarType=fill','Color=k');
+hold on;
+vline([2.5 5 7.5]);
 xlabel('Time (s)');
 ylabel('delatF/f (%)');
-drawPublishAxis;
+%drawPublishAxis;
+drawnow;
 
 subplot(2,1,2);
 myerrorbar(t,strongEffect,'yError',strongEffectSTE,'yErrorBarType=fill','Color=r');
@@ -72,7 +75,10 @@ xlabel('Time (s)');
 ylabel('delatF/f (%)');
 hold on
 myerrorbar(t,weakEffect,'yError',weakEffectSTE,'yErrorBarType=fill','Color=b');
+hold on;vline([2.5 5 7.5]);
 mylegend({'Strong effect families','Weak effect families'},{'r','b'});
+
+makeEqualYaxis(2,1,[1 2]);
 drawPublishAxis;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
