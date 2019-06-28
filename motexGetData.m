@@ -5,6 +5,9 @@
 %         by: justin gardner
 %       date: 06/26/19
 %    purpose: rsync data over to google drive
+%             need to make sure to connect to the servers
+%             in the right order (since they just show up as Data / Data-1 etc
+%             Do, experiment one - LABSERVER6 or 5 first then  LABSERVER for logs
 %
 %
 function retval = motexGetData(dataName,varargin)
