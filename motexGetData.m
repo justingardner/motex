@@ -5,9 +5,9 @@
 %         by: justin gardner
 %       date: 06/26/19
 %    purpose: rsync data over to google drive
-%             need to make sure to connect to the servers
-%             in the right order (since they just show up as Data / Data-1 etc
-%             Do, experiment one - LABSERVER6 or 5 first then  LABSERVER for logs
+%             will check both data and data-1 for correct server names for logs
+%             Make sure you are connect via tunnel to 172.17.150.219/data (Labserver)
+%             and also 172.17.150.7/tex for the data
 %
 %
 function retval = motexGetData(dataName,varargin)
@@ -19,7 +19,7 @@ if nargin < 1
 end
 
 % get default args
-getArgs(varargin,{'fromDataPath=/Volumes/DATA/MOUSE/IMAGING/GCAMP','fromLogPath=/Volumes/DATA-1/MOUSE/LOGS','logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex','skipData=0'});
+getArgs(varargin,{'fromDataPath=/Volumes/tex/IMAGING','fromLogPaths',{'/Volumes/DATA-1/MOUSE/LOGS','/Volumes/DATA-1/MOUSE/LOGS'},'logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex','skipData=0'});
 
 if ~skipData
   % look for data
@@ -29,6 +29,14 @@ if ~skipData
   if ~isdir(fromDataName)
     disp(sprintf('(motexGetData) Could not find data: %s',fromDataName));
     return
+  end
+end
+
+% check for log path
+fromLogPath = '';
+for iLogPath = 1:length(fromLogPaths)
+  if isdir(fromLogPaths{iLogPath})
+    fromLogPath = fromLogPaths{iLogPath};
   end
 end
 
