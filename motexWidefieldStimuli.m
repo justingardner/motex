@@ -25,7 +25,7 @@
 %
 function retval = motexWidefieldStimuli(varargin)
 
-getArgs(varargin,{'sourceDir=/Volumes/GoogleDrive/My Drive/docs/2019/NSF CRCNS/Stimuli','texFolder=tex_eq','noiseFolder=noise_eq','destDir=~/Desktop/expt','texFamily',{'glass','fronds','spikes','beans','crystals','rocks','scales','clouds'},'texGenTypes',{'pool4','PS'},'destType=tif','nImageRepeat=5','destFilenameStem=im','grayValue=128','readmeFilename=readme.txt','stimulusInfoFilename=stimulusInfo','trialTime=10','outputSize=255','flicker=1','iti=5','imageFrequency=2.0','randomizeOrder=0','generateMethod=2','preStimDur=1','postStimDur=2','stimDur=2.5'});
+getArgs(varargin,{'sourceDir=/Volumes/GoogleDrive/My Drive/docs/2019/NSF CRCNS/Stimuli','texFolder=tex_eq','noiseFolder=noise_eq','destDir=~/Desktop/expt','texFamily',{'glass','fronds','spikes','beans','crystals','rocks','scales','clouds'},'texGenTypes',{'pool4','PS'},'destType=tif','nImageRepeat=5','destFilenameStem=im','grayValue=128','readmeFilename=readme.txt','stimulusInfoFilename=stimulusInfo','trialTime=10','outputSize=255','flicker=1','iti=5','imageFrequency=2.0','randomizeOrder=0','generateMethod=2','preStimDur=1','postStimDur=1.5','stimDur=2.5','miniblock=1'});
 
 % get files from both tex and noise
 searchFolders = {texFolder, noiseFolder};
@@ -52,12 +52,12 @@ if generateMethod==1
   generateImageSequence1(sourceDir,searchFolders,destDir,matchTex,texFamily,texGenTypes,destType,nImageRepeat,destFilenameStem,grayValue,readmeFilename,stimulusInfoFilename,trialTime,outputSize,flicker,iti,imageFrequency,randomizeOrder);
 else
   % generate the new way (independent trials for each stimulus
-  generateImageSequence2(sourceDir,searchFolders,destDir,matchTex,texFamily,texGenTypes,destType,destFilenameStem,grayValue,readmeFilename,stimulusInfoFilename,outputSize,flicker,randomizeOrder,imageFrequency,preStimDur,stimDur,postStimDur);
+  generateImageSequence2(sourceDir,searchFolders,destDir,matchTex,texFamily,texGenTypes,destType,destFilenameStem,grayValue,readmeFilename,stimulusInfoFilename,outputSize,flicker,randomizeOrder,imageFrequency,preStimDur,stimDur,postStimDur,miniblock);
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    gereateImageSequence2    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function generateImageSequence2(sourceDir,searchFolders,destDir,matchTex,texFamily,texGenTypes,destType,destFilenameStem,grayValue,readmeFilename,stimulusInfoFilename,outputSize,flicker,randomizeOrder,imageFrequency,preStimDur,stimDur,postStimDur);
+function generateImageSequence2(sourceDir,searchFolders,destDir,matchTex,texFamily,texGenTypes,destType,destFilenameStem,grayValue,readmeFilename,stimulusInfoFilename,outputSize,flicker,randomizeOrder,imageFrequency,preStimDur,stimDur,postStimDur,miniblock);
 
 % confirm
 if ~askuser('(motexWidefiledStimuli) Ok to copy'), return,end
@@ -67,6 +67,10 @@ makeDestDir(searchFolders,destDir);
 
 % readme string
 readmeText = '';
+
+% set random number see to always generate the same sequence
+e.randomSeed = 10;
+rng(e.randomSeed);
 
 % get the stimulus order
 stimulusOrder = getRandomizeOrder(matchTex,randomizeOrder);
@@ -83,6 +87,14 @@ stimulusOrder = repmat(stimulusOrder,length(searchFolders),1);
 stimulusOrder = stimulusOrder(:);
 folderNums = folderNums(:);
 
+% randomize for miniblocks
+if miniblock>1
+  % get randomized order
+  e.randOrder = randperm(length(stimulusOrder));
+  stimulusOrder = stimulusOrder(e.randOrder);
+  folderNums = folderNums(e.randOrder);
+end
+
 % write out image sequence
 imageNum = 1;iTrial = 0;
 for iFile= 1:length(stimulusOrder)
@@ -98,6 +110,8 @@ for iFile= 1:length(stimulusOrder)
   e.texSampleNum(iTrial) = matchTex.sampleNum{1}(fileNum);
   e.texFolderNum(iTrial) = folderNum;
   e.texFolderName{iTrial}= searchFolders{folderNum};
+  e.miniBlockNumber(iTrial) = floor((iTrial-1)/miniblock)+1;
+  e.miniBlockOrder(iTrial) = mod(iTrial-1,miniblock)+1;
   
   % get source filename
   sourceFilename = fullfile(matchTex.paths{folderNum}{fileNum},matchTex.filenames{folderNum}{fileNum});
@@ -140,17 +154,19 @@ for iFile= 1:length(stimulusOrder)
   end
   nPostStimImages = round(postStimDur*imageFrequency);
 
-  % write out the gray image for the prestimdur
-  for iImageRepeat = 1:nPreStimImages
-    % create destFilenamea
-    destFilename = sprintf('%s%04i.%s',destFilenameStem,imageNum,destType);
-    destFilename = fullfile(destDir,destFilename);
-    % write out what was done
-    readmeText = sprintf('%s%04i\tgray\tgray\n',readmeText,imageNum);
-    % update image num
-    imageNum = imageNum+1;
-    % write image
-    imwrite(grayImage,destFilename,destType,'Compression','lzw');
+  if e.miniBlockOrder(end) == 1
+    % write out the gray image for the prestimdur
+    for iImageRepeat = 1:nPreStimImages
+      % create destFilenamea
+      destFilename = sprintf('%s%04i.%s',destFilenameStem,imageNum,destType);
+      destFilename = fullfile(destDir,destFilename);
+      % write out what was done
+      readmeText = sprintf('%s%04i\tgray\tgray\n',readmeText,imageNum);
+      % update image num
+      imageNum = imageNum+1;
+      % write image
+      imwrite(grayImage,destFilename,destType,'Compression','lzw');
+    end
   end
 
   % write out the image
