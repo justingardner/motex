@@ -19,17 +19,48 @@ if nargin < 1
 end
 
 % get default args
-getArgs(varargin,{'fromDataPath=/Volumes/tex/IMAGING','fromLogPaths',{'/Volumes/DATA-1/MOUSE/LOGS','/Volumes/DATA-1/MOUSE/LOGS'},'logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex','skipData=0'});
+getArgs(varargin,{'fromDataPaths',{'/Volumes/tex/IMAGING','/Volumes/tex/IMAGING/WIDEFIELD'},'fromLogPaths',{'/Volumes/DATA-1/MOUSE/LOGS','/Volumes/DATA/MOUSE/LOGS'},'logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex','skipData=0'});
+
+% see if we are being called to try to update all files
+if strcmp(lower(dataName),'all')
+  for iFromDataPath = 1:length(fromDataPaths)
+    folders = dir(fromDataPaths{iFromDataPath});
+    for iFolder = 1:length(folders)
+      % check for folders that begin with M
+      if folders(iFolder).name(1) == 'M'
+	% call this function recursively
+	motexGetData(folders(iFolder).name,varargin{:});
+      end
+    end
+  end
+end
+
+
+% clear any funny characters
+dataName = stripfilesep(strtrim(dataName));
 
 if ~skipData
-  % look for data
-  fromDataName = fullfile(fromDataPath,dataName);
+  % default to not found
+  foundData = 0;
 
-  % check for data
-  if ~isdir(fromDataName)
-    disp(sprintf('(motexGetData) Could not find data: %s',fromDataName));
-    return
+  % cycle through each possibe place data can be
+  for iFromDataPath = 1:length(fromDataPaths)
+    
+    % look for data in each possible place
+    fromDataName = fullfile(fromDataPaths{iFromDataPath},dataName);
+    if isdir(fromDataName)
+      % if found remember where it is found and break
+      fromDataPath = fromDataPaths{iFromDataPath};
+      foundData = 1;
+      break;
+    end
   end
+  % could not find data
+  if ~foundData
+    % check for data
+      disp(sprintf('(motexGetData) Could not find data: %s',fromDataName));
+      return
+    end
 end
 
 % check for log path
