@@ -89,10 +89,78 @@ end
 cutoff = minPhotoDiode + (maxPhotoDiode-minPhotoDiode)*0.2;
 edges = motexGetEdges(photoDiode,cutoff);
 
-% these should be going on and off at the video frame rate, so check that
-% by calculating how long they usually take
-edgeLength = unique(diff(edges.rising(2:end)))
-keyboard
-% now go find the events
-photoDiodeEvents = find(photoDiode>cutoff);
-keyboard
+% get length of edges
+len = median(edges.len(2:end-1));
+
+% get the height of each edge by putting each edge
+% into a matrix and taking median over the edge
+for iLen = 1:len
+  edgeHeight(iLen,:) = photoDiode(edges.rising+iLen-1);
+end
+edgeHeight = median(edgeHeight)';
+
+% find the min and max height of edges
+minEdgeHeight = min(edgeHeight);
+maxEdgeHeight = max(edgeHeight);
+
+% get a cutoff
+cutoff = minEdgeHeight + (maxEdgeHeight-minEdgeHeight)*0.6;
+
+% now find edges of these - this will be when the
+% video trigger was on
+videoTrigger = motexGetEdges(edgeHeight,cutoff);
+
+% get mean and standard deviation of the no trigger
+% use this as a stricter cutoff 
+nullVideoTriggerHeight = edgeHeight(1:videoTrigger.rising(1)-15);
+nullMean = mean(nullVideoTriggerHeight);
+nullStd = std(nullVideoTriggerHeight);
+strictCutoff = nullMean + 4*nullStd;
+
+% now push the start time back to the very beginning of the event
+% by moving forward until we are a few standard deviations above the mean
+% of the no events
+for iVideoTrigger = 1:videoTrigger.n
+  % get the rising edge
+  rising = videoTrigger.rising(iVideoTrigger);
+  % go backwards while we are still above criteria
+  stepsBack = 0;
+  maxStepsBack = 10;  
+  while (edgeHeight(rising) > strictCutoff) & (stepsBack<maxStepsBack)
+    rising = rising -1;
+    stepsBack = stepsBack + 1;
+  end
+  videoTrigger.expandedRising(iVideoTrigger) = rising;
+end
+
+% now convert these times back to the original time series
+rising = edges.rising(videoTrigger.expandedRising);
+falling = edges.falling(videoTrigger.falling);
+
+% make a new trace for visualization
+trigTrace = zeros(1,length(photoDiode));
+for iTrig = 1:length(rising)
+  trigTrace(rising(iTrig):falling(iTrig)) = 1;
+end
+
+mlrSmartfig('motex2mrtools','reuse');clf;
+plot(t,photoDiode,'k-');
+hold on
+plot(t,trigTrace*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
+xlabel('time (sec)');
+
+% now analyze to see how many trials and frames
+% first figure out the biggest jump between trigs
+trialJumpSize = max(diff(unique(diff(rising))));
+trialTrigs = [1 find(diff(rising)>=trialJumpSize)+1];
+nTrials = length(trialTrigs);
+trialLen = unique(diff(trialTrigs));
+if length(trialLen) > 1
+  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) Trials do not have all the same length of photo triggers %s',mlrnum2str(trialLen)));
+else
+  trialLen = t(falling(trialLen))-t(rising(1));
+  disp(sprintf('(motexGetPhotoDiodeTimes) Found %i trials of length %0.3fs',nTrials,trialLen));
+end
+
+
+
