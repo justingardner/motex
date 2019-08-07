@@ -156,11 +156,13 @@ trialTrigs = [1 find(diff(rising)>=trialJumpSize)+1];
 nTrials = length(trialTrigs);
 trialLen = unique(diff(trialTrigs));
 if length(trialLen) > 1
-  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) Trials do not have all the same length of photo triggers %s',mlrnum2str(trialLen)));
+  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) %i trials do not have all the same length of photo triggers %s',nTrials,mlrnum2str(trialLen)));
 else
   trialLen = t(falling(trialLen))-t(rising(1));
   disp(sprintf('(motexGetPhotoDiodeTimes) Found %i trials of length %0.3fs',nTrials,trialLen));
 end
 
+% return when the photoDiode went on
+photoDiodeTimes = rising;
 
 
