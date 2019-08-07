@@ -51,16 +51,16 @@ for iSession = 1:d.nSessions
       continue;
     end
     % load the log
+    disppercent(-inf,sprintf('(motex2mrtools:motexSyncToAI) Loading log %s',runInfo.logPath));
     log = load(runInfo.logPath);
+    disppercent(inf);
     if ~isfield(log,'AIdata')
       disp(sprintf('(motex2mrtools:motexSyncToAI) Log file %s does not contain AIdata',runInfo.logPath));
       continue;
     end
-    keyboard
-    % now figure out every time that the photoDiode trace went high
-    motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode));
-      
 
+    % now figure out every time that the photoDiode trace went high
+    d.photoDiodeTimes = motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode));
   end
 end
 
@@ -104,7 +104,7 @@ minEdgeHeight = min(edgeHeight);
 maxEdgeHeight = max(edgeHeight);
 
 % get a cutoff
-cutoff = minEdgeHeight + (maxEdgeHeight-minEdgeHeight)*0.6;
+cutoff = minEdgeHeight + (maxEdgeHeight-minEdgeHeight)*0.4;
 
 % now find edges of these - this will be when the
 % video trigger was on
@@ -143,26 +143,67 @@ for iTrig = 1:length(rising)
   trigTrace(rising(iTrig):falling(iTrig)) = 1;
 end
 
+% now analyze to see how many trials and frames
+% first figure out the biggest jump between trigs
+samplesBetweenTriggers = rising(2:end)-falling(1:end-1);
+% find a big jump between triggers
+jumpSizes = unique(samplesBetweenTriggers);
+[~,jumpLoc] = max(diff(jumpSizes));
+trialJumpSize = jumpSizes(jumpLoc+1);
+% now find all the places where the trigger times exceed that (this
+% should be a trial step
+trialTrigs = [1 find(samplesBetweenTriggers>=trialJumpSize)+1];
+nTrials = length(trialTrigs);
+trigsPerTrial = unique(diff(trialTrigs));
+if length(trigsPerTrial) > 1
+  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) %i trials do not have all the same length of photo triggers %s',nTrials,mlrnum2str(trigsPerTrial)));
+end
+% compute length in seconds of first trial
+trialLen = t(falling(trialTrigs(2)))-t(rising(1));
+titleStr = sprintf('Found %i trials of length %0.3fs (%s photo diode triggers per trial)',nTrials,trialLen,mlrnum2str(trigsPerTrial,'sigfigs=0'));
+disp(sprintf('(motexGetPhotoDiodeTimes) %s',titleStr));
+trialStartTime = t(edges.rising(videoTrigger.expandedRising(trialTrigs)));
+
+% display
 mlrSmartfig('motex2mrtools','reuse');clf;
+subplot(3,1,1);
 plot(t,photoDiode,'k-');
 hold on
 plot(t,trigTrace*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
 xlabel('time (sec)');
+axis tight;
+title(titleStr);
 
-% now analyze to see how many trials and frames
-% first figure out the biggest jump between trigs
-trialJumpSize = max(diff(unique(diff(rising))));
-trialTrigs = [1 find(diff(rising)>=trialJumpSize)+1];
-nTrials = length(trialTrigs);
-trialLen = unique(diff(trialTrigs));
-if length(trialLen) > 1
-  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) %i trials do not have all the same length of photo triggers %s',nTrials,mlrnum2str(trialLen)));
-else
-  trialLen = t(falling(trialLen))-t(rising(1));
-  disp(sprintf('(motexGetPhotoDiodeTimes) Found %i trials of length %0.3fs',nTrials,trialLen));
+subplot(3,1,2);
+startIndex = 1;
+[~,endIndex] = min(abs(t-(trialStartTime(1)+5)));
+plot(t(startIndex:endIndex),photoDiode(startIndex:endIndex),'k-');
+hold on
+plot(t(startIndex:endIndex),trigTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
+axis tight
+xlabel('time (sec)');
+title(sprintf('Time up to first trial'));
+
+subplot(3,1,3);
+startIndex = 1;
+[~,startIndex] = min(abs(t-(trialStartTime(1)-1)));
+[~,endIndex] = min(abs(t-(trialStartTime(2)+1)));
+plot(t(startIndex:endIndex),photoDiode(startIndex:endIndex),'k-');
+hold on
+plot(t(startIndex:endIndex),trigTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
+axis tight
+xlabel('time (sec)');
+title(sprintf('First trial: %i photo diode triggers',trialTrigs(2)-trialTrigs(1)));
+
+% return computed info about the
+photoDiodeTimes.nTrials = nTrials;
+photoDiodeTimes.trialLen = trialLen;
+photoDiodeTimes.trialStartTime = trialStartTime;
+photoDiodeTimes.trialStartIndex = trialTrigs;
+photoDiodeTimes.allPhotoDiodeStartTime = t(rising);
+photoDiodeTimes.allPhotoDiodeEndTime = t(falling);
+
+
+if ~askuser('Triggers ok')
+  keyboard
 end
-
-% return when the photoDiode went on
-photoDiodeTimes = rising;
-
-
