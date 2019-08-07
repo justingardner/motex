@@ -17,14 +17,14 @@ if nargin < 1
 end
 
 % process other arguments
-getArgs(varargin,{'dataPath=~/data/motex'});
+[argNames argVals args] = getArgs(varargin,{'dataPath=~/data/motex'});
 
 % get info about raw data
 d = getMotexRawInfo(dataDir,'dataPath',dataPath);
 if isempty(d),return,end
 
 % sync to AI 
-d = motexSyncToAI(d);
+d = motexSyncToAI(d,args{:});
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %    motexSyncToAI    %
@@ -33,7 +33,9 @@ function d = motexSyncToAI(d,varargin)
 
 % function will find sync times in analog data files for
 % each one of the images
-getArgs(varargin,{'sessionNum=inf','runNum=inf'});
+
+% check arguments
+getArgs(varargin,{'aiTraceTime=1','aiTracePhotoDiode=2','sessionNum=inf','runNum=inf'});
 
 % for each session
 for iSession = 1:d.nSessions
@@ -43,13 +45,54 @@ for iSession = 1:d.nSessions
   for iRun = 1:nRun
     % shortcut to runInfo
     runInfo = d.runInfo{iSession}{iRun};
-    % load the log
+    % check for log file
     if ~isfile(runInfo.logPath)
       disp(sprintf('(motex2mrtools:motexSyncToAI) Could not find log %s',runInfo.logPath));
-      return
+      continue;
     end
+    % load the log
+    log = load(runInfo.logPath);
+    if ~isfield(log,'AIdata')
+      disp(sprintf('(motex2mrtools:motexSyncToAI) Log file %s does not contain AIdata',runInfo.logPath));
+      continue;
+    end
+    keyboard
+    % now figure out every time that the photoDiode trace went high
+    motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode));
+      
+
   end
 end
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    motexGetPhotoDiodeTimes    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function photoDiodeTimes = motexGetPhotoDiodeTimes(t,photoDiode);
 
+% default return value
+photoDiodeTimes = [];
+
+% make into arrays
+t = t(:);photoDiode = photoDiode(:);
+
+% get min and max
+minPhotoDiode = min(photoDiode(:));
+maxPhotoDiode = max(photoDiode(:));
+
+% check that there were some reasonable events
+if maxPhotoDiode < 1
+  disp(sprintf('(motex2mrtools:motexGetPhotoDiodeTimes) The photoDiode trace does not have any values above 1'));
+  return
+end
+
+% calculate a cutoff to find each video frame
+cutoff = minPhotoDiode + (maxPhotoDiode-minPhotoDiode)*0.2;
+edges = motexGetEdges(photoDiode,cutoff);
+
+% these should be going on and off at the video frame rate, so check that
+% by calculating how long they usually take
+edgeLength = unique(diff(edges.rising(2:end)))
+keyboard
+% now go find the events
+photoDiodeEvents = find(photoDiode>cutoff);
 keyboard
