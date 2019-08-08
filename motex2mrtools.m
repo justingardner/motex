@@ -35,7 +35,7 @@ function d = motexSyncToAI(d,varargin)
 % each one of the images
 
 % check arguments
-getArgs(varargin,{'aiTraceTime=1','aiTracePhotoDiode=2','sessionNum=inf','runNum=inf'});
+getArgs(varargin,{'aiTraceTime=1','aiTracePhotoDiode=2','aiTraceCameraOn=3','aiTraceImageAcq=4','sessionNum=inf','runNum=inf','ttlCutoff=2.5'});
 
 % for each session
 for iSession = 1:d.nSessions
@@ -61,6 +61,38 @@ for iSession = 1:d.nSessions
 
     % now figure out every time that the photoDiode trace went high
     d.photoDiodeTimes = motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode));
+
+    % figure out times that the camera was on
+    cameraOnEdges = motexGetEdges(log.AIdata(:,aiTraceCameraOn),ttlCutoff);
+    d.cameraOnTimes = log.AIdata(cameraOnEdges.rising,aiTraceTime);
+    d.cameraOffTimes = log.AIdata(cameraOnEdges.falling,aiTraceTime);
+    d.cameraOnN = length(d.cameraOnTimes);
+
+    % figure out each image acquisition time
+    acqEdges = motexGetEdges(log.AIdata(:,aiTraceImageAcq),ttlCutoff);
+    d.acqOnTimes = log.AIdata(acqEdges.rising,aiTraceTime);
+    d.acqOffTimes = log.AIdata(acqEdges.falling,aiTraceTime);
+
+    % figure out how many images per each cameraOnTime
+    d.whichCameraOn = zeros(1,length(d.acqOnTimes));
+    for iCameraOn = 1:length(d.cameraOnTimes)
+      % find out all the acqOnTimes that start after cameraOn and before cameraOff
+      d.whichCameraOn(find((d.acqOnTimes >= d.cameraOnTimes(iCameraOn)) & (d.acqOnTimes <= d.cameraOffTimes(iCameraOn)))) = iCameraOn;
+      d.acqPerCameraOn(iCameraOn) = sum(d.whichCameraOn==iCameraOn);
+    end
+    
+    % compute how long each frame is
+    d.cameraFrameLen = median(d.acqOffTimes - d.acqOnTimes);
+    d.cameraFreq = 1/d.cameraFrameLen;
+    
+    % display some information
+    disp(sprintf('(motex2mrtools:syncToAI) %s Session %i Run %i: %i Camera trials (%s images per trial) %0.2f Hz',d.dataDir,iSession,iRun,d.cameraOnN,mlrnum2str(unique(d.acqPerCameraOn),'sigfigs=0'),d.cameraFreq));
+  
+    % check to make sure photodiode trials match camera triggers
+    if d.cameraOnN ~= d.photoDiodeTimes.nTrials
+      disp(sprintf('(motex2mrtools:syncToAI) Camera on triggers do not match photoDiode trials: %i ~= %i',d.cameraOnN,d.photoDiodeTimes.nTrials));
+      if ~askuser('Is this Ok'),keyboard,end
+    end
   end
 end
 
