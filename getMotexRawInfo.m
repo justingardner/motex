@@ -1,11 +1,11 @@
 % getMotexRawInfo.m
 %
 %        $Id:$ 
-%      usage: getMotexRawInfo(dataDir)
+%      usage: d = getMotexRawInfo(dataDir)
 %         by: justin gardner
 %       date: 07/21/19
 %    purpose: Gets the info about the raw file locations for a motex session and returns a structure
-%       e.g.: getMotexRawInfo('M190621_MA')
+%       e.g.: d = getMotexRawInfo('M190621_MA')
 %
 function d = getMotexRawInfo(dataDir,varargin)
 
