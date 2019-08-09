@@ -28,7 +28,11 @@
 %
 function retval = motexStimuli(varargin)
 
-getArgs(varargin,{'sourceDir=/Volumes/GoogleDrive/My Drive/docs/2019/NSF CRCNS/Stimuli','texFolder=tex_eq','noiseFolder=noise_eq','destDir=~/Desktop/expt','texFamily',{'glass','fronds','spikes','beans','crystals','rocks','scales','clouds'},'texGenTypes',{'pool4','PS'},'destType=tif','nImageRepeat=5','destFilenameStem=im','grayValue=128','readmeFilename=readme.txt','stimulusInfoFilename=stimulusInfo','trialTime=10','outputSize=255','flicker=0','iti=5','imageFrequency=2.0','randomizeOrder=1','behavior=0'});
+getArgs(varargin,{'sourceDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Stimuli','texFolder=tex_eq','noiseFolder=noise_eq','destDir=~/Desktop/expt','texFamily',{'glass','fronds','spikes','beans','crystals','rocks','scales','clouds'},'texGenTypes',{'pool4','PS'},'destType=tif','nImageRepeat=5','destFilenameStem=im','grayValue=128','readmeFilename=readme.txt','stimulusInfoFilename=stimulusInfo','trialTime=10','outputSize=255','flicker=0','iti=5','imageFrequency=2.0','randomizeOrder=1','behavior=0','randomSeed=10'});
+
+% set random number see to always generate the same sequence
+e.randomSeed = randomSeed;
+rng(e.randomSeed);
 
 % cheange some settings for behavior
 if behavior

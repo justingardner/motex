@@ -1,16 +1,20 @@
 % getMotexLogs
 %
-%      usage: d = getMotexLogs(d)
+%      usage: [d tf] = getMotexLogs(d)
 %         by: justin gardner
 %       date: 07/19/19
 %    purpose: gets log info for a session, called after using getMotexRawInfo
+%             tf returns whether successful
 % 
 %       e.g.: d = getMotexRawInfo('M190718_RN')
 %             d = getMotexLogs(d);
 %
 %             To only get logs for a specific session / run
 %             d = getMotexLogs(d,'sessionNum=1','runNum=1');
-function d = getMotexLogs(d,varargin)
+function [d tf] = getMotexLogs(d,varargin)
+
+% default failure
+tf = false;
 
 % check arguments
 if nargin < 1
@@ -23,15 +27,13 @@ end
 [argNames argVals args] = getArgs(varargin,{'sessionNum=inf','runNum=inf'});
 
 % check session and run num existense
-[tf sessionNum] = motexSessionRunCheck(d,sessionNum,runNum);
+[tf d] = motexSessionRunCheck(d,sessionNum,runNum);
 if ~tf,return,end
 
 % for each session
-for iSession = sessionNum
-  % figure out how many runs to run over
-  if isinf(runNum) runs = 1:d.nRuns(iSession); else runs = runNum; end
+for iSession = d.sessionNum
   % for each run
-  for iRun = runs
+  for iRun = d.runNum{iSession}
     % sync to AI 
     [tf d] = motexSyncToAI(d,iSession,iRun,args{:});
     if ~tf,return,end
@@ -42,11 +44,13 @@ for iSession = sessionNum
   end
 end
 
+% success
+tf = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    motexSessionRunCheck    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [tf sessionNum] = motexSessionRunCheck(d,sessionNum,runNum)
+function [tf d] = motexSessionRunCheck(d,sessionNum,runNum)
 
 % default to failed test
 tf = false;
@@ -60,6 +64,8 @@ if ~isinf(sessionNum)
 else
   sessionNum = 1:d.nSessions;
 end
+% add sessions
+d.sessionNum = sessionNum;
 
 % check to see if asked for run exists
 if ~isinf(runNum)
@@ -68,6 +74,13 @@ if ~isinf(runNum)
       dispHeader(sprintf('(getMotexLogs) Run %s does not exist in session %s',mlrnum2str(runNum,'sigfigs=0'),mlrnum2str(sessionNum,'sigfigs=0')));
       return
     end
+  end
+  % keep run nums
+  d.runNum{1:length(d.sessionNum)} = runNum;
+else
+  % figure out runs (i.e. get all runs for each session
+  for iSession = sessionNum
+    d.runNum{iSession} = 1:d.nRuns(sessionNum(iSession));
   end
 end
 
