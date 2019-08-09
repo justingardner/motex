@@ -108,6 +108,9 @@ if nPhotoDiode ~= nReadmeStimuli
   disp(sprintf('(motex2mrtools:getMotexStimvolMiniblock) Photodiode triggers do not match readme: %i ~= %i',nPhotoDiode,nReadmeStimuli));
   return
 end
+% set these numbers into the strucutre
+runInfo.nImages = nReadmeStimuli;
+runInfo.nImagesPerMiniblock = runInfo.nImages/runInfo.nMiniblocks;
 
 % convert the filenames in the stimulusInfo to ones without the fullfile
 for iFilename = 1:length(runInfo.stimulusInfo.texFilename)
@@ -125,7 +128,7 @@ for iReadmeStimuli = 1:nReadmeStimuli
   end
 end
 % reshape into trials
-stimNumsRaw = reshape(stimNumsRaw,length(stimNumsRaw)/runInfo.nMiniblocks,runInfo.nMiniblocks)';
+stimNumsRaw = reshape(stimNumsRaw,runInfo.nImagesPerMiniblock,runInfo.nMiniblocks)';
 
 % now reorder according to how the trials were run
 stimNumsInRunOrder = stimNumsRaw(runInfo.protocol.seqnums,:);
@@ -136,7 +139,7 @@ stimNumsInRunOrder = stimNumsRaw(runInfo.protocol.seqnums,:);
 stimNumsInRunOrderOnsetOnly = nan(size(stimNumsInRunOrder));
 stimNumsInRunOrderEnvelope = nan(size(stimNumsInRunOrder));
 curStimulus = [];curStimulusFirstFrame = nan;curStimulusLastFrame = nan;
-for iFrame = 1:size(stimNumsRaw,2)
+for iFrame = 1:runInfo.nImagesPerMiniblock
   % set the frames to 0
   stimNumsInRunOrderOnsetOnly(:,iFrame) = 0;
   stimNumsInRunOrderEnvelope(:,iFrame) = 0;
@@ -178,7 +181,15 @@ for iStimulus = 1:length(runInfo.stimulusInfo.texFamily)
 end
 
 % now link each stimulus presentation with the corresponding camera frame
-% FIx, Fix. FIx start here.
+for iFrame = 1:nPhotoDiode
+  [timeDiff stimToCameraFrame(iFrame)] = min(abs(runInfo.photoDiodeTimes.allPhotoDiodeStartTime(iFrame)-runInfo.acqMeanTime));
+  if timeDiff > runInfo.cameraFrameLen
+    disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Frame %i (%i of miniblock) is  %0.5fs away from a camera acquisition period which is longer than one camera frame',iFrame,rem(iFrame,runInfo.nImagesPerMiniblock),timeDiff));
+  end
+end
+
+% now we can compute various stimvols
+% Fix, Fix, Fix, start here
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimulusInfo    %

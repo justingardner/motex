@@ -179,6 +179,9 @@ acqEdges = motexGetEdges(log.AIdata(:,aiTraceImageAcq),ttlCutoff);
 runInfo.acqOnTimes = log.AIdata(acqEdges.rising,aiTraceTime);
 runInfo.acqOffTimes = log.AIdata(acqEdges.falling,aiTraceTime);
 
+% compute mean time of camera acquisition
+runInfo.acqMeanTime = runInfo.acqOnTimes + (runInfo.acqOffTimes-runInfo.acqOnTimes)/2
+
 % figure out how many images per each cameraOnTime
 runInfo.whichCameraOn = zeros(1,length(runInfo.acqOnTimes));
 for iCameraOn = 1:length(runInfo.cameraOnTimes)
