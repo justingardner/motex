@@ -190,40 +190,6 @@ for iFrame = 1:runInfo.nImagesPerMiniblock
   end
 end
 
-% code for making concatenated stimvols
-if 0
-  % in stimulusInfo, make numeric version of texFamily, texGenType
-  texFamilyNames = unique(runInfo.stimulusInfo.texFamily);
-  texGenTypeNames = unique(runInfo.stimulusInfo.texGenType);
-  texFolderNames = unique(runInfo.stimulusInfo.texFolderName);
-  % now get numeric value of each stimulus
-  for iStimulus = 1:length(runInfo.stimulusInfo.texFamily)
-    texFamilyNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFamily{iStimulus},texFamilyNames));
-    texGenTypeNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texGenType{iStimulus},texGenTypeNames));
-    texFolderNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFolderName{iStimulus},texFolderNames));
-  end
-
-  % now link each stimulus presentation with the corresponding camera frame
-  for iFrame = 1:nPhotoDiode
-    [timeDiff stimToCameraFrame(iFrame)] = min(abs(runInfo.photoDiodeTimes.allPhotoDiodeStartTime(iFrame)-runInfo.acqMeanTime));
-    if timeDiff > runInfo.cameraFrameLen
-      disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Frame %i (%i of miniblock) is  %0.5fs away from a camera acquisition period which is longer than one camera frame',iFrame,rem(iFrame,runInfo.nImagesPerMiniblock),timeDiff));
-    end
-  end
-
-
-  % now we can compute various stimvols
-  makeStimvolsFor = {'texGenType','texFolder','texFamily'};
-  for iSortType = 1:length(makeStimvolsFor)
-    thisStimvols = {};
-    for iStimtype = 1:length(unique(eval(sprintf('%sNum',makeStimvolsFor{iSortType}))));
-      stimvolMapping = [nan eval(sprintf('%sNum',makeStimvolsFor{iSortType}))];
-      thisStimvols{iStimtype} = stimToCameraFrame(find(stimvolMapping(stimNumsInRunOrderOnsetOnly'+1) == iStimtype));
-    end
-    eval(sprintf('stimvols.%s = thisStimvols;',makeStimvolsFor{iSortType}));
-  end
-end
-
 % make trial-by-trial stimvols
 for iTrial = 1:runInfo.nMiniblocks
   % get stim nums for this trial
