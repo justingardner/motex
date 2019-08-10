@@ -18,7 +18,7 @@ if nargin < 1
 end
 
 % check arguments
-getArgs(varargin,{'autoCorrect=0'});
+getArgs(varargin,{'autoCorrect=0','spoof3d=0'});
 
 % check for file
 if ~isfile(cameraFilename)
@@ -59,4 +59,13 @@ hdr.nanFrames = nanFrames;
 hdr.cameraInfo = CameraInfo;
 hdr.ext = 'PCO';
 [tf hdr] = mlrImageIsHeader(hdr);
+
+% if we need to spoof as a 3d volume 
+if spoof3d
+  % spoof a 3rd dimension
+  data = reshape(data,hdr.dim(1),hdr.dim(2),1,hdr.dim(3));
+  hdr.dim = [hdr.dim(1) hdr.dim(2) 1 hdr.dim(3)];
+  hdr.nDim = 4;
+  hdr.pixdim = [hdr.pixdim(1) hdr.pixdim(2) 1 hdr.pixdim(3)];
+end
 

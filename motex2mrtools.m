@@ -37,26 +37,174 @@ if ~tf, return, end
 [d tf] = getMotexStimvol(d,varargin{:});
 if ~tf, return, end
 
-% write out concatenated nifti file of data
-[d tf] = motexWriteToNifti(d);
+% write out to a new mrTools session
+[d tf] = motexMakeSession(d,varargin{:});
 if ~tf, return, end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%    motexWriteToNifti    %
-%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [d tf] = motexWriteToNifti(d)
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    motexMakeSession    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [d tf] = motexMakeSession(d,varargin)
 
 % default to failure
 tf = false;
 
-% cycle through each session and run we are doing
-for iSession = d.sessionNum
-  for iRun = d.runNum{iSession}
+getArgs(varargin,{'mrToolsPath=~/Desktop'},'suppressUnknownArgMessage',true);
+
+% sessionName
+nameSplit = strsplit(d.dataDir,'_');
+sessionName = nameSplit{1};
+% try to find operator initials
+operator = 'unknown';
+if (length(nameSplit) > 1) 
+  initialLoc = regexp(nameSplit{2},'[a-zA-Z]+');
+  if ~isempty(initialLoc)
+    operator = nameSplit{2}(initialLoc(1):end);
   end
 end
 
-keyboard
+% display to user what we found
+disp(sprintf('(motex2mrtools:motexMakeSession) Session name: %s Operator: %s',sessionName,operator));
 
+% setup sesion name
+sessionPath = fullfile(mrToolsPath,sessionName);
+if isdir(sessionPath)
+  % new name for session
+  newSessionPath = fullfile(mrToolsPath,sprintf('delete_me_%s_%s_%s',sessionName,datestr(now,'yyyymmdd'),datestr(now,'hhmmss')));
+  if askuser(sprintf('(motex2mrtools:motexMakeSession) Session already exists, move session to %s and start over',getLastDir(newSessionPath)));
+    % move
+    movefile(sessionPath,newSessionPath);
+  end
+end
+
+if ~askuser(sprintf('(motex2mrtools:motexMakeSession) Create session directory: %s',sessionPath)),return,end
+mkdir(sessionPath);
+
+% make an anatomy folder
+anatomyPath = fullfile(sessionPath,'Anatomy');
+if ~isdir(anatomyPath)
+  mkdir(anatomyPath);
+end
+
+% make an Etc folder
+etcPath = fullfile(sessionPath,'Etc');
+if ~isdir(etcPath)
+  mkdir(etcPath);
+end
+
+% make directory for Raw
+rawPath = fullfile(sessionPath,'Raw');
+if ~isdir(rawPath)
+  mkdir(rawPath);
+end
+
+% make tSeries path
+tSeriesPath = fullfile(rawPath,'TSeries');
+if ~isdir(tSeriesPath)
+  mkdir(tSeriesPath);
+end
+
+% descriptions
+description = {};
+stimfileName = {};
+sessionDescription = '';
+
+% cycle through each session and run we are doing and save raw data
+for iSession = d.sessionNum
+  for iRun = d.runNum{iSession}
+    % get runInfo
+    runInfo = d.runInfo{iSession}{iRun};
+    % add anatomy image  if there is not one already in there
+    if ~isfile(fullfile(anatomyPath,'anatomy.nii'));
+      mlrImageSave(fullfile(anatomyPath,'anatomy.nii'),runInfo.image,runInfo.hdr);
+    end
+
+    if ~isempty(sessionDescription)
+      sessionDescription = sprintf('%s %s',sessionDescription,runInfo.stimulusInfo.stimulusType);
+    else
+      sessionDescription = runInfo.stimulusInfo.stimulusType;
+    end
+    
+    % FIX, FIX, FIX for testing only
+    dispHeader('Only running on 5 files for testing');
+    runInfo.nFiles = 5;
+
+    % tell user what we are doing
+    disppercent(-inf,sprintf('(motex2mrtools:motexMakeSession) Making session with %i raw camera files',runInfo.nFiles));
+
+    % cycle through each image
+    for iCamera = 1:runInfo.nFiles
+
+      % filename
+      filename = fullfile(runInfo.dataPath,sprintf('%s_%i.mat',d.dataDir,iCamera));
+      % check for file
+      if ~isfile(filename)
+	disp(sprintf('(motex2mrtools) Could not find file %s',filename));
+	return
+      end
+      
+      % load the file
+      [data hdr] = motexCamera2nifti(filename,'spoof3d');
+      
+      % make output filename
+      outputFilename = fullfile(tSeriesPath,sprintf('%s_%i_%i_%04i.nii',d.dataDir,sessionNum,runNum,iCamera));
+      
+      % write file
+      mlrImageSave(outputFilename,data,hdr);
+      
+      % make a description
+      description{end+1} = runInfo.stimulusInfo.stimulusType;
+      
+      % add trial-wise description if there is one
+      if isfield(runInfo,'description')
+	description{end} = sprintf('%s%s',description{end},runInfo.description{iCamera});
+      end     
+
+      % make the stimFilename
+      stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,sessionNum,runNum,iCamera));
+      stimvol = runInfo.stimvols.(runInfo.stimvols.default).stimvol;
+      stimNames = runInfo.stimvols.(runInfo.stimvols.default).labels;
+      save(stimfileName{end},'stimvol','stimNames','runInfo');
+    
+      % update disppercent
+      disppercent(iCamera/runInfo.nFiles);
+    end
+    disppercent(inf);
+  end
+end
+
+try
+  % switch to directory
+  curpwd = pwd;
+  cd(sessionPath);
+  % get default params
+  [sessionParams groupParams] = mrInit([],[],'justGetParams=1','defaultParams=1');
+  % set description
+  groupParams.description = description;
+  % add session fields
+  sessionParams.description = sessionDescription;
+  sessionParams.operator = operator;
+  sessionParams.magnet = '';
+  sessionParams.coil = '';
+  sessionParams.pulseSequence = '';
+  % now init 
+  mrInit(sessionParams,groupParams,'makeReadme=0');
+  % set all the stimfiles
+  v = newView;
+  for iStimfile = 1:length(stimfileName)
+    viewSet(v,'stimfileName',getLastDir(stimfileName{iStimfile}),iStimfile,'Raw');
+  end
+catch
+  % some error, switch back to original path
+  cd(curpwd);
+  return
+end
+
+% switch back to original path
+cd(curpwd);
+
+% success
+tf = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimvol    %
@@ -67,16 +215,19 @@ function [d tf] = getMotexStimvol(d,varargin)
 tf = false;
 
 % parse arguments
-getArgs(varargin,{'stimuli=stimuli-miniblock'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'stimuli=miniblock'},'suppressUnknownArgMessage',true);
 
 % cycle through each session and run we are doing
 for iSession = d.sessionNum
   for iRun = d.runNum{iSession}
     % shortcut to runInfo
     runInfo = d.runInfo{iSession}{iRun};
+
+    % set information about what type of stimulus is here
+    runInfo.stimulusInfo.stimulusType = stimuli;
     
     switch (stimuli)
-      case {'stimuli-miniblock'}
+      case {'miniblock'}
         [tf runInfo] = getMotexStimvolMiniblock(runInfo); 
 	if ~tf, return, end
       otherwise 
@@ -231,13 +382,30 @@ for iTrial = 1:runInfo.nMiniblocks
     end
   end
 end
-  
+
+% make a description
+description = {};
+for iTrial = 1:runInfo.nMiniblocks
+  % find the names of the stimuli shown on this miniblock
+  [~,~,stimNums] = find(stimNumsInRunOrderOnsetOnly(iTrial,:));
+  stimNames = {runInfo.stimulusInfo.texFilename{stimNums}};
+  % and create a string with all of the names
+  description{end+1} = '';
+  for iStim = 1:length(stimNames)
+    description{end} = sprintf('%s:::%s',description{end},stripext(stimNames{iStim}));
+  end
+end
+
+% set which stimvol to save by default
+stimvols.default = 'texFolderName';
+
 % pack into structure to return
 runInfo.stimvols = stimvols;
 runInfo.stimNums.raw = stimNumsRaw;
 runInfo.stimNums.inOrder = stimNumsInRunOrder;
 runInfo.stimNums.inOrderOnsetOnly = stimNumsInRunOrderOnsetOnly;
 runInfo.stimNums.inOrderEnvelope = stimNumsInRunOrderEnvelope;
+runInfo.description = description;
 
 % success
 tf = true;
@@ -248,7 +416,7 @@ tf = true;
 function [d tf] = getMotexStimulusInfo(d,varargin)
 
 % arguments
-getArgs(varargin,{'stimuli=stimuli-miniblock','stimDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'stimuli=miniblock','stimDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
 
 % default failure
 tf = false;
