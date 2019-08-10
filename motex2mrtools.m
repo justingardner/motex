@@ -125,10 +125,6 @@ for iSession = d.sessionNum
       sessionDescription = runInfo.stimulusInfo.stimulusType;
     end
     
-    % FIX, FIX, FIX for testing only
-    dispHeader('Only running on 5 files for testing');
-    runInfo.nFiles = 5;
-
     % tell user what we are doing
     disppercent(-inf,sprintf('(motex2mrtools:motexMakeSession) Making session with %i raw camera files',runInfo.nFiles));
 
