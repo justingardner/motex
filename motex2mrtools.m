@@ -37,6 +37,27 @@ if ~tf, return, end
 [d tf] = getMotexStimvol(d,varargin{:});
 if ~tf, return, end
 
+% write out concatenated nifti file of data
+[d tf] = motexWriteToNifti(d);
+if ~tf, return, end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    motexWriteToNifti    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [d tf] = motexWriteToNifti(d)
+
+% default to failure
+tf = false;
+
+% cycle through each session and run we are doing
+for iSession = d.sessionNum
+  for iRun = d.runNum{iSession}
+  end
+end
+
+keyboard
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimvol    %
 %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -169,27 +190,91 @@ for iFrame = 1:runInfo.nImagesPerMiniblock
   end
 end
 
-% in stimulusInfo, make numeric version of texFamily, texGenType
-texFamilyNames = unique(runInfo.stimulusInfo.texFamily);
-texGenTypeNames = unique(runInfo.stimulusInfo.texGenType);
-texFolderNames = unique(runInfo.stimulusInfo.texFolderName);
-% now get numeric value of each stimulus
-for iStimulus = 1:length(runInfo.stimulusInfo.texFamily)
-  texFamilyNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFamily{iStimulus},texFamilyNames));
-  texGenTypeNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texGenType{iStimulus},texGenTypeNames));
-  texFolderNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFolderName{iStimulus},texFolderNames));
-end
+% code for making concatenated stimvols
+if 0
+  % in stimulusInfo, make numeric version of texFamily, texGenType
+  texFamilyNames = unique(runInfo.stimulusInfo.texFamily);
+  texGenTypeNames = unique(runInfo.stimulusInfo.texGenType);
+  texFolderNames = unique(runInfo.stimulusInfo.texFolderName);
+  % now get numeric value of each stimulus
+  for iStimulus = 1:length(runInfo.stimulusInfo.texFamily)
+    texFamilyNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFamily{iStimulus},texFamilyNames));
+    texGenTypeNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texGenType{iStimulus},texGenTypeNames));
+    texFolderNum(iStimulus) = find(strcmp(runInfo.stimulusInfo.texFolderName{iStimulus},texFolderNames));
+  end
 
-% now link each stimulus presentation with the corresponding camera frame
-for iFrame = 1:nPhotoDiode
-  [timeDiff stimToCameraFrame(iFrame)] = min(abs(runInfo.photoDiodeTimes.allPhotoDiodeStartTime(iFrame)-runInfo.acqMeanTime));
-  if timeDiff > runInfo.cameraFrameLen
-    disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Frame %i (%i of miniblock) is  %0.5fs away from a camera acquisition period which is longer than one camera frame',iFrame,rem(iFrame,runInfo.nImagesPerMiniblock),timeDiff));
+  % now link each stimulus presentation with the corresponding camera frame
+  for iFrame = 1:nPhotoDiode
+    [timeDiff stimToCameraFrame(iFrame)] = min(abs(runInfo.photoDiodeTimes.allPhotoDiodeStartTime(iFrame)-runInfo.acqMeanTime));
+    if timeDiff > runInfo.cameraFrameLen
+      disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Frame %i (%i of miniblock) is  %0.5fs away from a camera acquisition period which is longer than one camera frame',iFrame,rem(iFrame,runInfo.nImagesPerMiniblock),timeDiff));
+    end
+  end
+
+
+  % now we can compute various stimvols
+  makeStimvolsFor = {'texGenType','texFolder','texFamily'};
+  for iSortType = 1:length(makeStimvolsFor)
+    thisStimvols = {};
+    for iStimtype = 1:length(unique(eval(sprintf('%sNum',makeStimvolsFor{iSortType}))));
+      stimvolMapping = [nan eval(sprintf('%sNum',makeStimvolsFor{iSortType}))];
+      thisStimvols{iStimtype} = stimToCameraFrame(find(stimvolMapping(stimNumsInRunOrderOnsetOnly'+1) == iStimtype));
+    end
+    eval(sprintf('stimvols.%s = thisStimvols;',makeStimvolsFor{iSortType}));
   end
 end
 
-% now we can compute various stimvols
-% Fix, Fix, Fix, start here
+% make trial-by-trial stimvols
+for iTrial = 1:runInfo.nMiniblocks
+  % get stim nums for this trial
+  stimNumsThisTrial = stimNumsInRunOrderOnsetOnly(iTrial,:);
+  % get time points when the camera was on this trial
+  cameraTimes = runInfo.acqMeanTime(find(runInfo.whichCameraOn==iTrial));
+  % get time points when each stimulus came on
+  imageIndex = runInfo.photoDiodeTimes.trialStartIndex(iTrial);
+  imageTimes = runInfo.photoDiodeTimes.allPhotoDiodeStartTime(imageIndex:imageIndex+runInfo.nImagesPerMiniblock-1);
+  % now get times of each video frame where an image was shown in trial
+  imageTimes = imageTimes(find(stimNumsThisTrial~=0));
+  % convert these imageTimes into cameraFrames
+  for iImage = 1:length(imageTimes)
+    [timediff,cameraFrame(iImage)] = min(abs(imageTimes(iImage)-cameraTimes));
+    % the difference in time between stimulus and camera should be less
+    % than half a frame
+    if timediff>(runInfo.cameraFrameLen/2)
+      disp(sprintf('(motex2mrtools) Image %i in trial %i happened %fs from a camera frame which is more than half a camera frame length',iImage,iTrial,timediff));
+    end
+  end
+  % get just the imageNums for the non gray frames
+  imageNums = stimNumsThisTrial(stimNumsThisTrial~=0);
+  
+  % now we are ready to make stimvols. We make them sorted for
+  % the following variables
+  makeStimvolsFor = {'texGenType','texFolderName','texFamily'};
+  for iSortType = 1:length(makeStimvolsFor)
+    thisStimvols = {};
+    % make the labels for what each type is
+    stimvols.(makeStimvolsFor{iSortType}).labels = unique(runInfo.stimulusInfo.(makeStimvolsFor{iSortType}));
+    % find out label of each image in this sequence
+    imageLabels = {runInfo.stimulusInfo.(makeStimvolsFor{iSortType}){imageNums}};
+    % now go through each one of the labels
+    for iLabel = 1:length(stimvols.(makeStimvolsFor{iSortType}).labels);
+      % and find which one of the images match
+      imageMatch = find(strcmp(imageLabels,stimvols.(makeStimvolsFor{iSortType}).labels{iLabel}));
+      % and put the camera frames in here
+      stimvols.(makeStimvolsFor{iSortType}).stimvol{iTrial}{iLabel} = cameraFrame(imageMatch);
+    end
+  end
+end
+  
+% pack into structure to return
+runInfo.stimvols = stimvols;
+runInfo.stimNums.raw = stimNumsRaw;
+runInfo.stimNums.inOrder = stimNumsInRunOrder;
+runInfo.stimNums.inOrderOnsetOnly = stimNumsInRunOrderOnsetOnly;
+runInfo.stimNums.inOrderEnvelope = stimNumsInRunOrderEnvelope;
+
+% success
+tf = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimulusInfo    %
