@@ -49,7 +49,7 @@ function [d tf] = motexMakeSession(d,varargin)
 % default to failure
 tf = false;
 
-getArgs(varargin,{'mrToolsPath=~/Desktop'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'mrToolsPath=/Volumes/GoogleDrive/My Drive/docs/2019/motex/data/mrTools'},'suppressUnknownArgMessage',true);
 
 % sessionName
 nameSplit = strsplit(d.dataDir,'_');
