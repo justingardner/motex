@@ -49,7 +49,7 @@ function [d tf] = motexMakeSession(d,varargin)
 % default to failure
 tf = false;
 
-getArgs(varargin,{'mrToolsPath=/Volumes/GoogleDrive/My Drive/docs/2019/motex/data/mrTools'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'mrToolsPath=~/data/mlrMotex'},'suppressUnknownArgMessage',true);
 
 % sessionName
 nameSplit = strsplit(d.dataDir,'_');
@@ -158,10 +158,13 @@ for iSession = d.sessionNum
 
       % make the stimFilename
       stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,sessionNum,runNum,iCamera));
-      stimvol = runInfo.stimvols.(runInfo.stimvols.default).stimvol;
+      stimvol = runInfo.stimvols.(runInfo.stimvols.default).stimvol{iCamera};
       stimNames = runInfo.stimvols.(runInfo.stimvols.default).labels;
       save(stimfileName{end},'stimvol','stimNames','runInfo');
-    
+
+      % save the runInfo in Etc
+      save(fullfile(etcPath,sprintf('runInfo_%i_%i.mat',iSession,iRun)),'runInfo');
+      
       % update disppercent
       disppercent(iCamera/runInfo.nFiles);
     end
@@ -190,6 +193,17 @@ try
   for iStimfile = 1:length(stimfileName)
     viewSet(v,'stimfileName',getLastDir(stimfileName{iStimfile}),iStimfile,'Raw');
   end
+  % save the full d structure
+  save(fullfile(etcPath,'rawInfo.mat'),'d');
+  % do concatenation
+  [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
+  params.filterType = 'Detrend only';
+  v = concatTSeries(v,params);
+  % do event-related
+  v = viewSet(v,'curGroup','Concatenation');
+  [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
+  params.scanParams{1}.hdrlen = 10;
+  v = eventRelated(v,params);
 catch
   % some error, switch back to original path
   cd(curpwd);
