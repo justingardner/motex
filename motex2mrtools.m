@@ -257,7 +257,10 @@ try
     v = viewSet(v,'curGroup','Concatenation');
     v = viewSet(v,'curScan',viewGet(v,'nScans'));
     [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
-    params.scanParams{1}.hdrlen = 2;
+    % set the hdrlen
+    for iScans = 1:length(params.scanNum)
+      params.scanParams{iScans}.hdrlen = 2;
+    end
     v = eventRelated(v,params);
   end
   deleteView(v);
