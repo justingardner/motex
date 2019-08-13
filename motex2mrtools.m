@@ -8,6 +8,24 @@
 %
 %             To extract a particulare session / run
 %             motex2mrtools('M190718_RN','sessionNum=1','runNum=1');
+%
+%             This function expects data to have been downloaded form the servers
+%             using getMotexData to the directory ~/data/motex/raw and will
+%             make the mrtools directory into ~/data/motex. This can be overwritten
+%             by doing
+%
+%             motex2mrtools('M190718_RN','dataDir=from/path','toPath=to/path');
+%
+%             The program also needs to know about what stimulus was given which is
+%             set by the stimulusType variable (which defaults to miniblock). You
+%             can also do a very basic import in which you specify the times of
+%             different events. stimTimes is cell array of scalars (or arrays) that
+%             specify the time in seconds after the start of the trial when 
+%             each one of the stimNames stimuli occur. SO, for example, if you had
+%             the stimulus: 'texture' at 2.5s and 'phase-scramble' at 7.5s you would do
+%             
+%             motex2mrtools('M190621_MA','sessionNum=1','runNum=1','stimulusType=manual','stimTimes',{2.5 7.5},'stimNames',{'texture' 'phase-scramble'});
+%
 function d = motex2mrtools(dataDir,varargin)
 
 d = [];
@@ -19,7 +37,7 @@ if nargin < 1
 end
 
 % process other arguments
-getArgs(varargin,{'dataPath=~/data/motex'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'dataPath=~/data/motex/raw'},'suppressUnknownArgMessage',true);
 
 % get info about raw data
 d = getMotexRawInfo(dataDir,'dataPath',dataPath);
@@ -49,7 +67,7 @@ function [d tf] = motexMakeSession(d,varargin)
 % default to failure
 tf = false;
 
-getArgs(varargin,{'mrToolsPath=~/data/mlrMotex'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'toPath=~/data/motex'},'suppressUnknownArgMessage',true);
 
 % sessionName
 nameSplit = strsplit(d.dataDir,'_');
@@ -67,10 +85,10 @@ end
 disp(sprintf('(motex2mrtools:motexMakeSession) Session name: %s Operator: %s',sessionName,operator));
 
 % setup sesion name
-sessionPath = fullfile(mrToolsPath,sessionName);
+sessionPath = fullfile(toPath,sessionName);
 if isdir(sessionPath)
   % new name for session
-  newSessionPath = fullfile(mrToolsPath,sprintf('delete_me_%s_%s_%s',sessionName,datestr(now,'yyyymmdd'),datestr(now,'hhmmss')));
+  newSessionPath = fullfile(toPath,sprintf('delete_me_%s_%s_%s',sessionName,datestr(now,'yyyymmdd'),datestr(now,'hhmmss')));
   if askuser(sprintf('(motex2mrtools:motexMakeSession) Session already exists, move session to %s and start over',getLastDir(newSessionPath)));
     % move
     movefile(sessionPath,newSessionPath);
@@ -108,7 +126,8 @@ end
 description = {};
 stimfileName = {};
 sessionDescription = '';
-
+runConcatAndEventRelated = {};
+startScanNum = 1;endScanNum = 0;
 % cycle through each session and run we are doing and save raw data
 for iSession = d.sessionNum
   for iRun = d.runNum{iSession}
@@ -130,6 +149,9 @@ for iSession = d.sessionNum
 
     % cycle through each image
     for iCamera = 1:runInfo.nFiles
+      
+      % keep track of scan number
+      endScanNum = endScanNum+1;
 
       % filename
       filename = fullfile(runInfo.dataPath,sprintf('%s_%i.mat',d.dataDir,iCamera));
@@ -156,11 +178,24 @@ for iSession = d.sessionNum
 	description{end} = sprintf('%s%s',description{end},runInfo.description{iCamera});
       end     
 
-      % make the stimFilename
-      stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,sessionNum,runNum,iCamera));
-      stimvol = runInfo.stimvols.(runInfo.stimvols.default).stimvol{iCamera};
-      stimNames = runInfo.stimvols.(runInfo.stimvols.default).labels;
-      save(stimfileName{end},'stimvol','stimNames','runInfo');
+      % if we have stimvols
+      if isfield(runInfo,'stimvols')
+	% make the stimFilename
+	stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,sessionNum,runNum,iCamera));
+	
+	% grab the stimvol for that run
+	stimvol = runInfo.stimvols.stimvol{iCamera};
+
+	% if there are labels then
+	if isfield(runInfo.stimvols,'labels')
+	  % save with labels
+	  stimNames = runInfo.stimvols.labels;
+	  save(stimfileName{end},'stimvol','stimNames','runInfo');
+	else
+	  % otherwise just save the stimvol
+	  save(stimfileName{end},'stimvol','runInfo');
+	end
+      end
 
       % save the runInfo in Etc
       save(fullfile(etcPath,sprintf('runInfo_%i_%i.mat',iSession,iRun)),'runInfo');
@@ -169,6 +204,13 @@ for iSession = d.sessionNum
       disppercent(iCamera/runInfo.nFiles);
     end
     disppercent(inf);
+    
+    % keep track of whether to run concat and event-related and which scans to do it over
+    if isfield(runInfo,'stimvols')
+      runConcatAndEventRelated{end+1} = [startScanNum endScanNum];
+    end
+    startScanNum = endScanNum+1;
+
   end
 end
 
@@ -176,6 +218,8 @@ try
   % switch to directory
   curpwd = pwd;
   cd(sessionPath);
+  % make sure we are quit out of mrTools
+  mrQuit(0);
   % get default params
   [sessionParams groupParams] = mrInit([],[],'justGetParams=1','defaultParams=1');
   % set description
@@ -190,20 +234,34 @@ try
   mrInit(sessionParams,groupParams,'makeReadme=0');
   % set all the stimfiles
   v = newView;
-  for iStimfile = 1:length(stimfileName)
-    viewSet(v,'stimfileName',getLastDir(stimfileName{iStimfile}),iStimfile,'Raw');
+  if length(stimfileName) > 0
+    for iStimfile = 1:length(stimfileName)
+      viewSet(v,'stimfileName',getLastDir(stimfileName{iStimfile}),iStimfile,'Raw');
+    end
   end
   % save the full d structure
   save(fullfile(etcPath,'rawInfo.mat'),'d');
-  % do concatenation
-  [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
-  params.filterType = 'Detrend only';
-  v = concatTSeries(v,params);
-  % do event-related
-  v = viewSet(v,'curGroup','Concatenation');
-  [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
-  params.scanParams{1}.hdrlen = 10;
-  v = eventRelated(v,params);
+  % run concatenation and event-related as needed
+  for iConcatAndEventRelated = 1:length(runConcatAndEventRelated)
+    % do concatenation
+    [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
+    params.filterType = 'Detrend only';
+    params.description = 'Concatenation of [x...x]';
+    params.scanList = runConcatAndEventRelated{iConcatAndEventRelated}(1):runConcatAndEventRelated{iConcatAndEventRelated}(2);
+    params = mlrFixDescriptionInParams(params);
+    v = concatTSeries(v,params);
+  end
+  % run event-related on the concatenated scans above
+  if ~isempty(runConcatAndEventRelated)
+    % do event-related
+    v = viewSet(v,'curGroup','Concatenation');
+    v = viewSet(v,'curScan',viewGet(v,'nScans'));
+    [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
+    params.scanParams{1}.hdrlen = 2;
+    v = eventRelated(v,params);
+  end
+  deleteView(v);
+  mrQuit(0);
 catch
   % some error, switch back to original path
   cd(curpwd);
@@ -225,7 +283,7 @@ function [d tf] = getMotexStimvol(d,varargin)
 tf = false;
 
 % parse arguments
-getArgs(varargin,{'stimuli=miniblock'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'stimulusType=miniblock'},'suppressUnknownArgMessage',true);
 
 % cycle through each session and run we are doing
 for iSession = d.sessionNum
@@ -234,14 +292,17 @@ for iSession = d.sessionNum
     runInfo = d.runInfo{iSession}{iRun};
 
     % set information about what type of stimulus is here
-    runInfo.stimulusInfo.stimulusType = stimuli;
+    runInfo.stimulusInfo.stimulusType = stimulusType;
     
-    switch (stimuli)
+    switch (stimulusType)
+      case {'manual'}
+        [tf runInfo] = getMotexStimvolManual(runInfo,varargin{:}); 
+	if ~tf, return, end
       case {'miniblock'}
         [tf runInfo] = getMotexStimvolMiniblock(runInfo); 
 	if ~tf, return, end
       otherwise 
-        disp(sprintf('(getMotexStimvol) Unknown stimulus type: %s',stimuli));
+        disp(sprintf('(getMotexStimvol) Unknown stimulus type: %s',stimulusType));
 	return
     end
     
@@ -253,6 +314,55 @@ end
 % success
 tf = true;
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    getMotexStimvolManual    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [tf runInfo] = getMotexStimvolManual(runInfo,varargin)
+
+% default failure
+tf = false;
+
+getArgs(varargin,{'stimTimes=[]','stimNames={}'},'suppressUnknownArgMessage',true);
+
+% make sure that the camera on and photoDiode trial numbers match
+if runInfo.cameraOnN ~= runInfo.photoDiodeTimes.nTrials
+  disp(sprintf('(motex2mrtools:getMotexStimvolManual) Number of camera acq and photo didode start times do not match (%i ~= %i)',runInfo.cameraOnN,runInfo.photoDiodeTimes.nTrials));
+  return
+end
+
+% figure out what camera frame these stimTimes corrspond to.
+for iTrial = 1:runInfo.photoDiodeTimes.nTrials
+  % find when the stimulus started this trial
+  trialStartTime = runInfo.photoDiodeTimes.trialStartTime(iTrial);
+  % find out the times of the camera acquisition
+  cameraTimes = runInfo.acqMeanTime(runInfo.whichCameraOn == iTrial);
+  for iStimType = 1:length(stimTimes)
+    for iStim = 1:length(stimTimes{iStimType})
+      % the time of this stimulus
+      stimTime = trialStartTime+stimTimes{iStimType}(iStim);
+      % find the closest match for this event
+      [timeDiff cameraFrame] = min(abs(stimTime-cameraTimes));
+      % make sure we are not more than half a camera frame away
+      if timeDiff > (runInfo.cameraFrameLen/2)
+	disp(sprintf('(motex2mrtools:getMotexStimvolManual) Stimulus time: %f on trial %i is %f from a camera acquistion which is more than half the frame time',stimTimes{iStimType}(iStim),iTrial,timeDiff));
+	keyboard
+      end
+      % record this in stimvol
+      stimvols.stimvol{iTrial}{iStimType}(iStim) = cameraFrame;
+    end
+  end
+end
+
+% the labels
+if ~isempty(stimNames)
+  stimvols.labels = stimNames;
+end
+
+% pack into structure to return
+runInfo.stimvols = stimvols;
+
+% success
+tf = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimvolMiniblock    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -279,8 +389,9 @@ end
 % and the pFile which specifies the sequence order
 if ~isequal(runInfo.photoDiodeTimes.trialStartIndex,runInfo.pFile.trials(:,2)')
   disp(sprintf('(motex2mrtools:getMotexStimvolMiniblock) Photodiode triggers do not match image number in pFile'));
-  keyboard
-  return
+  if ~askuser('(motex2mrtools:getMotexStimvolMiniblock) Do you want to continue')
+    return
+  end
 end
 
 % check match between readme and phtoDiodes
@@ -288,7 +399,9 @@ nPhotoDiode = length(runInfo.photoDiodeTimes.allPhotoDiodeStartTime);
 nReadmeStimuli = length(runInfo.readme.frameNum);
 if nPhotoDiode ~= nReadmeStimuli
   disp(sprintf('(motex2mrtools:getMotexStimvolMiniblock) Photodiode triggers do not match readme: %i ~= %i',nPhotoDiode,nReadmeStimuli));
-  return
+  if ~askuser('(motex2mrtools:getMotexStimvolMiniblock) Do you want to continue')
+    return
+  end
 end
 % set these numbers into the strucutre
 runInfo.nImages = nReadmeStimuli;
@@ -358,8 +471,32 @@ for iTrial = 1:runInfo.nMiniblocks
   % get time points when the camera was on this trial
   cameraTimes = runInfo.acqMeanTime(find(runInfo.whichCameraOn==iTrial));
   % get time points when each stimulus came on
-  imageIndex = runInfo.photoDiodeTimes.trialStartIndex(iTrial);
-  imageTimes = runInfo.photoDiodeTimes.allPhotoDiodeStartTime(imageIndex:imageIndex+runInfo.nImagesPerMiniblock-1);
+  imageStartIndex = runInfo.photoDiodeTimes.trialStartIndex(iTrial);
+  imageEndIndex = imageStartIndex+runInfo.nImagesPerMiniblock-1;
+  % if the trial ended early then we need to fix things
+  % so check what the start of the next trial is
+  if iTrial < runInfo.photoDiodeTimes.nTrials
+    nextImageStartIndex = runInfo.photoDiodeTimes.trialStartIndex(iTrial+1);
+  else
+    nextImageStartIndex = length(runInfo.photoDiodeTimes.allPhotoDiodeStartTime)+1;
+  end
+  % see if we have gone off into the next trial
+  if imageEndIndex >= nextImageStartIndex
+    % set how many photo diode triggers we have
+    nPhotoDiodeThisTrial = nextImageStartIndex-imageStartIndex;
+    disp(sprintf('(motex2mrtools) Trial %i has %i photoDiodeTimes when it should have %i. Assuming that the trial ended early',iTrial,nPhotoDiodeThisTrial,imageEndIndex-imageStartIndex+1));
+    imageEndIndex = nextImageStartIndex-1;
+    % remove and stimNums that happen after the end
+    stimIndexes = find(stimNumsThisTrial);
+    missingStimIndexes = find(stimIndexes>nPhotoDiodeThisTrial);
+    if ~isempty(missingStimIndexes)
+      disp(sprintf('(motex2mrtools) Stimulus that happened at frame %s needs to be dropped',mlrnum2str(stimIndexes(missingStimIndexes),'sigfigs=0')));
+      % set these to zero
+      stimNumsThisTrial(stimIndexes(missingStimIndexes)) = 0;
+    end
+  end
+  % now get all the image times we can
+  imageTimes = runInfo.photoDiodeTimes.allPhotoDiodeStartTime(imageStartIndex:imageEndIndex);
   % now get times of each video frame where an image was shown in trial
   imageTimes = imageTimes(find(stimNumsThisTrial~=0));
   % convert these imageTimes into cameraFrames
@@ -406,8 +543,9 @@ for iTrial = 1:runInfo.nMiniblocks
   end
 end
 
-% set which stimvol to save by default
-stimvols.default = 'texFolderName';
+% set the stimvols that will be default used
+stimvols.stimvol = stimvols.texFolderName.stimvol;
+stimvols.labels = stimvols.texFolderName.labels;
 
 % pack into structure to return
 runInfo.stimvols = stimvols;
@@ -426,16 +564,23 @@ tf = true;
 function [d tf] = getMotexStimulusInfo(d,varargin)
 
 % arguments
-getArgs(varargin,{'stimuli=miniblock','stimDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'stimulusType=miniblock','stimDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
 
 % default failure
 tf = false;
+
+% if this is a manual stimulus type then don't do anything and return
+if ~isempty(findstr('manual',stimulusType))
+  disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Manual stimulus type, not trying to load any stimulus info'));
+  tf = true;
+  return
+end
 
 % get stimulusInfo for each run we are doing
 for iSession = d.sessionNum
   for iRun = d.runNum{iSession}
     % load the stimulusInfo 
-    stimfile = fullfile(stimDir,stimuli,'stimulusInfo.mat');
+    stimfile = fullfile(stimDir,stimulusType,'stimulusInfo.mat');
     if ~isfile(stimfile)
       disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find file: %s',stimfile));
       return
@@ -452,7 +597,7 @@ for iSession = d.sessionNum
     d.runInfo{iSession}{iRun}.stimulusInfo = s.e;
 
     % check for readme
-    readmeFile = fullfile(stimDir,stimuli,'readme.txt');
+    readmeFile = fullfile(stimDir,stimulusType,'readme.txt');
     if ~isfile(readmeFile)
       disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find readme file: %s',readmeFile));
       return

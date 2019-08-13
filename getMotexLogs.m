@@ -98,7 +98,7 @@ tf = false;
 % function to look into logs to get stimulus info
 
 % check arguments
-getArgs(varargin,{'sessionNum',1:d.nSessions,'runNum=inf'});
+getArgs(varargin,{'sessionNum',1:d.nSessions,'runNum=inf'},'suppressUnknownArgMessage',true);
 
 % shortcut to runInfo
 runInfo = d.runInfo{iSession}{iRun};
@@ -146,7 +146,7 @@ tf = false;
 % each one of the images
 
 % check arguments
-getArgs(varargin,{'aiTraceTime=1','aiTracePhotoDiode=2','aiTraceCameraOn=3','aiTraceImageAcq=4','ttlCutoff=2.5'});
+getArgs(varargin,{'aiTraceTime=1','aiTracePhotoDiode=2','aiTraceCameraOn=3','aiTraceImageAcq=4','ttlCutoff=2.5'},'suppressUnknownArgMessage',true);
 
 % shortcut to runInfo
 runInfo = d.runInfo{iSession}{iRun};
@@ -166,7 +166,7 @@ if ~isfield(log,'AIdata')
 end
 
 % now figure out every time that the photoDiode trace went high
-runInfo.photoDiodeTimes = motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode));
+runInfo.photoDiodeTimes = motexGetPhotoDiodeTimes(log.AIdata(:,aiTraceTime),log.AIdata(:,aiTracePhotoDiode),log.AIdata(:,aiTraceImageAcq));
 
 % figure out times that the camera was on
 cameraOnEdges = motexGetEdges(log.AIdata(:,aiTraceCameraOn),ttlCutoff);
@@ -212,7 +212,7 @@ tf = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    motexGetPhotoDiodeTimes    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function photoDiodeTimes = motexGetPhotoDiodeTimes(t,photoDiode);
+function photoDiodeTimes = motexGetPhotoDiodeTimes(t,photoDiode,cameraTrace);
 
 % default return value
 photoDiodeTimes = [];
@@ -236,6 +236,16 @@ edges = motexGetEdges(photoDiode,cutoff);
 
 % get length of edges
 len = median(edges.len(2:end-1));
+
+% remove any last edges for which there is no ending event
+edgesNotFullyRecorded = find((edges.rising+len) > length(photoDiode));
+if ~isempty(edgesNotFullyRecorded)
+  edges.n = min(edgesNotFullyRecorded)-1;
+  edges.rising = edges.rising(1:edges.n);
+  edges.falling = edges.falling(1:edges.n);
+  edges.completeN = edges.n;
+  edges.len = edges.len(1:edges.n);
+end
 
 % get the height of each edge by putting each edge
 % into a matrix and taking median over the edge
@@ -298,6 +308,12 @@ samplesBetweenTriggers = rising(2:end)-falling(1:end-1);
 jumpSizes = unique(samplesBetweenTriggers);
 [~,jumpLoc] = max(diff(jumpSizes));
 trialJumpSize = jumpSizes(jumpLoc+1);
+% check for runs in which all of the steps are large, if this is 
+% the case then choose the smallest of these to be a jump between runs
+% use arbitrary cutoff of 3 seconds
+if t(min(jumpSizes)) > 2
+  trialJumpSize = min(jumpSizes);
+end
 % now find all the places where the trigger times exceed that (this
 % should be a trial step
 trialTrigs = [1 find(samplesBetweenTriggers>=trialJumpSize)+1];
@@ -328,8 +344,11 @@ startIndex = 1;
 plot(t(startIndex:endIndex),photoDiode(startIndex:endIndex),'k-');
 hold on
 plot(t(startIndex:endIndex),trigTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
+plot(t(startIndex:endIndex),cameraTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'g-');
 axis tight
+legend('photo diode','frame detect','camera acquisition','Location','NorthWest');
 xlabel('time (sec)');
+ylabel('Analog amplitude (V)');
 title(sprintf('Time up to first trial'));
 
 subplot(3,1,3);
@@ -339,6 +358,7 @@ startIndex = 1;
 plot(t(startIndex:endIndex),photoDiode(startIndex:endIndex),'k-');
 hold on
 plot(t(startIndex:endIndex),trigTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'r-');
+plot(t(startIndex:endIndex),cameraTrace(startIndex:endIndex)*(maxPhotoDiode-minPhotoDiode)+minPhotoDiode,'g-');
 axis tight
 xlabel('time (sec)');
 title(sprintf('First trial: %i photo diode triggers',trialTrigs(2)-trialTrigs(1)));

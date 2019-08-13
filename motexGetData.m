@@ -9,6 +9,26 @@
 %             Make sure you are connect via tunnel to 172.17.150.219/data (Labserver)
 %             and also 172.17.150.7/tex for the data
 %
+%             To change paths you can set the following variables
+%
+%             fromDataPaths: A string (or cell array of strings, if there are multiple paths) which
+%                            the camera data will be taken from
+%              fromLogPaths: A string (or cell array of strings) for the path to the logs.
+%                    toPath: A string specifying the path to where you want the data copied to.
+%
+%             e.g.
+%             
+%             motexGetData('M190802_RN','fromDataPaths=/Volumes/tex/IMAGING','fromLogPaths=/Volumes/DATA/MOUSE/LOGS','toPath=~/data/motex/raw');
+%
+%             If you want to download all availabel data (note that this uses rsync
+%             so will only download data that has not been copied already):
+%
+%             motexGetData all
+%
+%             To download a single data set
+%
+%             motexGetData('M190802_RN');
+%
 %
 function retval = motexGetData(dataName,varargin)
 
@@ -19,7 +39,7 @@ if nargin < 1
 end
 
 % get default args
-getArgs(varargin,{'fromDataPaths',{'/Volumes/tex/IMAGING','/Volumes/tex/IMAGING/WIDEFIELD'},'fromLogPaths',{'/Volumes/DATA-1/MOUSE/LOGS','/Volumes/DATA/MOUSE/LOGS'},'logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex','skipData=0'});
+getArgs(varargin,{'fromDataPaths',{'/Volumes/tex/IMAGING','/Volumes/tex/IMAGING/WIDEFIELD'},'fromLogPaths',{'/Volumes/DATA-1/MOUSE/LOGS','/Volumes/DATA/MOUSE/LOGS'},'logDirs',{'MPEP_LOGS','VS_LOGS'},'toPath=~/data/motex/raw','skipData=0'});
 
 % see if we are being called to try to update all files
 if strcmp(lower(dataName),'all')

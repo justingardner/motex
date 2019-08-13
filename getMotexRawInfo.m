@@ -18,7 +18,7 @@ if nargin < 1
 end
 
 % process other arguments
-getArgs(varargin,{'dataPath=~/data/motex'});
+getArgs(varargin,{'dataPath=~/data/motex/raw'});
 
 % check to see if the data directory is there
 d.dataDir = dataDir;

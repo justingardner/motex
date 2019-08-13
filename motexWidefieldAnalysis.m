@@ -8,7 +8,7 @@
 %
 function retval = motexWidefieldAnalysis(varargin)
 
-getArgs(varargin,{'dataPath=/Volumes/GoogleDrive/My Drive/docs/2019/NSF CRCNS/data','dataDir=M190621_MA','processedDataPath=VDAQtensor/1/1','stimulusInfoPath=ANALYZED'});
+getArgs(varargin,{'dataPath=~/data/motex/raw','dataDir=M190621_MA','processedDataPath=VDAQtensor/1/1','stimulusInfoPath=ANALYZED'});
 
 % load processed data
 d = motexLoadProcessedData(fullfile(dataPath,dataDir,processedDataPath));
