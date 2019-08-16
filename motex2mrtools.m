@@ -72,6 +72,19 @@ getArgs(varargin,{'toPath=~/data/motex'},'suppressUnknownArgMessage',true);
 % sessionName
 nameSplit = strsplit(d.dataDir,'_');
 sessionName = nameSplit{1};
+
+% add session and run to sessionName
+for iSession = d.sessionNum
+  % add session name
+  sessionName = sprintf('%s_s%ir',sessionName,iSession);
+  for iRun = d.runNum{iSession}
+    % add run numbers
+    sessionName = sprintf('%s%i_',sessionName,iRun);
+  end
+  % strip last _
+  sessionName = sessionName(1:end-1);
+end
+    
 % try to find operator initials
 operator = 'unknown';
 if (length(nameSplit) > 1) 
@@ -92,6 +105,13 @@ if isdir(sessionPath)
   if askuser(sprintf('(motex2mrtools:motexMakeSession) Session already exists, move session to %s and start over',getLastDir(newSessionPath)));
     % move
     movefile(sessionPath,newSessionPath);
+  else
+    % rename session
+    newSessionNum = 2;
+    while isdir(sessionPath)
+      newSessionNum = newSessionNum+1;
+      newSessionPath = sprintf('%s_%i',sessionPath,newSessionNum);
+    end
   end
 end
 
@@ -165,7 +185,7 @@ for iSession = d.sessionNum
       [data hdr] = motexCamera2nifti(filename,'spoof3d');
       
       % make output filename
-      outputFilename = fullfile(tSeriesPath,sprintf('%s_%i_%i_%04i.nii',d.dataDir,sessionNum,runNum,iCamera));
+      outputFilename = fullfile(tSeriesPath,sprintf('%s_%i_%i_%04i.nii',d.dataDir,iSession,iRun,iCamera));
       
       % write file
       mlrImageSave(outputFilename,data,hdr);
@@ -181,7 +201,7 @@ for iSession = d.sessionNum
       % if we have stimvols
       if isfield(runInfo,'stimvols')
 	% make the stimFilename
-	stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,sessionNum,runNum,iCamera));
+	stimfileName{end+1} = fullfile(etcPath,sprintf('stimfile_%s_%i_%i_%04i.mat',d.dataDir,iSession,iRun,iCamera));
 	
 	% grab the stimvol for that run
 	stimvol = runInfo.stimvols.stimvol{iCamera};
@@ -207,7 +227,7 @@ for iSession = d.sessionNum
     
     % keep track of whether to run concat and event-related and which scans to do it over
     if isfield(runInfo,'stimvols')
-      runConcatAndEventRelated{end+1} = [startScanNum endScanNum];
+      runConcatAndEventRelated{end+1} = [startScanNum endScanNum stimvols.hdrlen];
     end
     startScanNum = endScanNum+1;
 
@@ -250,6 +270,7 @@ try
     params.scanList = runConcatAndEventRelated{iConcatAndEventRelated}(1):runConcatAndEventRelated{iConcatAndEventRelated}(2);
     params = mlrFixDescriptionInParams(params);
     v = concatTSeries(v,params);
+    hdrlen(iConcatAndEventRelated) = runConcatAndEventRelated{iConcatAndEventRelated}(3);
   end
   % run event-related on the concatenated scans above
   if ~isempty(runConcatAndEventRelated)
@@ -259,7 +280,7 @@ try
     [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
     % set the hdrlen
     for iScans = 1:length(params.scanNum)
-      params.scanParams{iScans}.hdrlen = 2;
+      params.scanParams{iScans}.hdrlen = hdrlen;
     end
     v = eventRelated(v,params);
   end
@@ -437,6 +458,7 @@ stimNumsInRunOrder = stimNumsRaw(runInfo.protocol.seqnums,:);
 stimNumsInRunOrderOnsetOnly = nan(size(stimNumsInRunOrder));
 stimNumsInRunOrderEnvelope = nan(size(stimNumsInRunOrder));
 curStimulus = [];curStimulusFirstFrame = nan;curStimulusLastFrame = nan;
+stimLen = [];
 for iFrame = 1:runInfo.nImagesPerMiniblock
   % set the frames to 0
   stimNumsInRunOrderOnsetOnly(:,iFrame) = 0;
@@ -450,6 +472,7 @@ for iFrame = 1:runInfo.nImagesPerMiniblock
       if ~isempty(curStimulus)
 	stimNumsInRunOrderOnsetOnly(:,curStimulusFirstFrame) = curStimulus;
 	stimNumsInRunOrderEnvelope(:,curStimulusFirstFrame:curStimulusLastFrame) = repmat(curStimulus,1,curStimulusLastFrame-curStimulusFirstFrame+1);
+	stimLen(end+1) = curStimulusLastFrame-curStimulusFirstFrame+1;
       end
       % new current stimulus
       curStimulus = stimNumsInRunOrder(:,iFrame);
@@ -467,10 +490,69 @@ for iFrame = 1:runInfo.nImagesPerMiniblock
   end
 end
 
+% make a description
+description = {};
+for iTrial = 1:runInfo.nMiniblocks
+  % find the names of the stimuli shown on this miniblock
+  [~,~,stimNums] = find(stimNumsInRunOrderOnsetOnly(iTrial,:));
+  stimNames = {runInfo.stimulusInfo.texFilename{stimNums}};
+  % and create a string with all of the names
+  description{end+1} = '';
+  for iStim = 1:length(stimNames)
+    description{end} = sprintf('%s:::%s',description{end},stripext(stimNames{iStim}));
+  end
+end
+
+% get stimulus tempral frequency and frameTime. This is used to determine
+% how long the stimulus was on the screen for.
+tempFreq = [];
+for iParameter = 1:length(runInfo.protocol.pardefs)
+  if ~isempty(strfind(lower(runInfo.protocol.pardefs{iParameter}),'temp')) && ~isempty(strfind(lower(runInfo.protocol.pardefs{iParameter}),'freq'))
+    tempFreq = runInfo.protocol.pars(iParameter,:)
+  end
+end
+if ~isempty(tempFreq)
+  frameTime = 1 / (median(tempFreq)/10);
+else
+  disp(sprintf('(motex2mrtools:getMotexStimvolMiniblock) Could not find temporal frequency parameter of stimulus. Assuming 2Hz (1 frame / 500 ms)'));
+  frameTime = 0.5;
+end
+
+% get the stimvols 
+stimvolsOnset = motexGetStimvolFromStimNums(runInfo,stimNumsInRunOrderOnsetOnly);
+stimvols = motexGetStimvolFromStimNums(runInfo,stimNumsInRunOrder);
+
+% figure out how long hdrlen should be - based on
+% a GCaMP decay time of about 0.8s
+GCaMPDecay = 0.8;
+stimvolsOnset.hdrlen = median(stimLen)*frameTime + GCaMPDecay;
+stimvols.hdrlen = frameTime + GCaMPDecay;
+
+% set the stimvols that will be default used
+stimvols.stimvol = stimvols.texFolderName.stimvol;
+stimvols.labels = stimvols.texFolderName.labels;
+
+% pack into structure to return
+runInfo.stimvols = stimvols;
+runInfo.stimvolsOnset = stimvolsOnset;
+runInfo.stimNums.raw = stimNumsRaw;
+runInfo.stimNums.inOrder = stimNumsInRunOrder;
+runInfo.stimNums.inOrderOnsetOnly = stimNumsInRunOrderOnsetOnly;
+runInfo.stimNums.inOrderEnvelope = stimNumsInRunOrderEnvelope;
+runInfo.description = description;
+
+% success
+tf = true;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    motexGetStimvolFromStimNums    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function stimvols = motexGetStimvolFromStimNums(runInfo,stimNums)
+
 % make trial-by-trial stimvols
 for iTrial = 1:runInfo.nMiniblocks
   % get stim nums for this trial
-  stimNumsThisTrial = stimNumsInRunOrderOnsetOnly(iTrial,:);
+  stimNumsThisTrial = stimNums(iTrial,:);
   % get time points when the camera was on this trial
   cameraTimes = runInfo.acqMeanTime(find(runInfo.whichCameraOn==iTrial));
   % get time points when each stimulus came on
@@ -506,8 +588,9 @@ for iTrial = 1:runInfo.nMiniblocks
   for iImage = 1:length(imageTimes)
     [timediff,cameraFrame(iImage)] = min(abs(imageTimes(iImage)-cameraTimes));
     % the difference in time between stimulus and camera should be less
-    % than half a frame
-    if timediff>(runInfo.cameraFrameLen/2)
+    % than half a frame. Fudge a little since the camera frames might be slightly longer
+    % than expected
+    if timediff>(3*runInfo.cameraFrameLen/5)
       disp(sprintf('(motex2mrtools) Image %i in trial %i happened %fs from a camera frame which is more than half a camera frame length',iImage,iTrial,timediff));
     end
   end
@@ -532,34 +615,6 @@ for iTrial = 1:runInfo.nMiniblocks
     end
   end
 end
-
-% make a description
-description = {};
-for iTrial = 1:runInfo.nMiniblocks
-  % find the names of the stimuli shown on this miniblock
-  [~,~,stimNums] = find(stimNumsInRunOrderOnsetOnly(iTrial,:));
-  stimNames = {runInfo.stimulusInfo.texFilename{stimNums}};
-  % and create a string with all of the names
-  description{end+1} = '';
-  for iStim = 1:length(stimNames)
-    description{end} = sprintf('%s:::%s',description{end},stripext(stimNames{iStim}));
-  end
-end
-
-% set the stimvols that will be default used
-stimvols.stimvol = stimvols.texFolderName.stimvol;
-stimvols.labels = stimvols.texFolderName.labels;
-
-% pack into structure to return
-runInfo.stimvols = stimvols;
-runInfo.stimNums.raw = stimNumsRaw;
-runInfo.stimNums.inOrder = stimNumsInRunOrder;
-runInfo.stimNums.inOrderOnsetOnly = stimNumsInRunOrderOnsetOnly;
-runInfo.stimNums.inOrderEnvelope = stimNumsInRunOrderEnvelope;
-runInfo.description = description;
-
-% success
-tf = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    getMotexStimulusInfo    %
