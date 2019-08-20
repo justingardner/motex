@@ -227,7 +227,7 @@ for iSession = d.sessionNum
     
     % keep track of whether to run concat and event-related and which scans to do it over
     if isfield(runInfo,'stimvols')
-      runConcatAndEventRelated{end+1} = [startScanNum endScanNum stimvols.hdrlen];
+      runConcatAndEventRelated{end+1} = [startScanNum endScanNum runInfo.stimvols.hdrlen];
     end
     startScanNum = endScanNum+1;
 
