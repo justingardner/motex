@@ -175,6 +175,7 @@ for iSession = d.sessionNum
 
       % filename
       filename = fullfile(runInfo.dataPath,sprintf('%s_%i.mat',d.dataDir,iCamera));
+
       % check for file
       if ~isfile(filename)
 	disp(sprintf('(motex2mrtools) Could not find file %s',filename));
@@ -216,15 +217,15 @@ for iSession = d.sessionNum
 	  save(stimfileName{end},'stimvol','runInfo');
 	end
       end
-
-      % save the runInfo in Etc
-      save(fullfile(etcPath,sprintf('runInfo_%i_%i.mat',iSession,iRun)),'runInfo');
-      
+     
       % update disppercent
       disppercent(iCamera/runInfo.nFiles);
     end
     disppercent(inf);
     
+    % save the runInfo in Etc
+    save(fullfile(etcPath,sprintf('runInfo_%i_%i.mat',iSession,iRun)),'runInfo');
+
     % keep track of whether to run concat and event-related and which scans to do it over
     if isfield(runInfo,'stimvols')
       runConcatAndEventRelated{end+1} = [startScanNum endScanNum runInfo.stimvols.hdrlen];
@@ -264,12 +265,19 @@ try
   % run concatenation and event-related as needed
   for iConcatAndEventRelated = 1:length(runConcatAndEventRelated)
     % do concatenation
+    v = viewSet(v,'curGroup','Raw');
     [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
     params.filterType = 'Detrend only';
     params.description = 'Concatenation of [x...x]';
     params.scanList = runConcatAndEventRelated{iConcatAndEventRelated}(1):runConcatAndEventRelated{iConcatAndEventRelated}(2);
     params = mlrFixDescriptionInParams(params);
+    % get the tSeries name for the concat
+    params.tseriesFile = {};
+    for iScan = 1:length(params.scanList)
+      params.tseriesFile{iScan} = viewGet(v,'tseriesFile',params.scanList(iScan));
+    end
     v = concatTSeries(v,params);
+    % extract hdrlen
     hdrlen(iConcatAndEventRelated) = runConcatAndEventRelated{iConcatAndEventRelated}(3);
   end
   % run event-related on the concatenated scans above
@@ -280,7 +288,7 @@ try
     [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
     % set the hdrlen
     for iScans = 1:length(params.scanNum)
-      params.scanParams{iScans}.hdrlen = hdrlen;
+      params.scanParams{iScans}.hdrlen = hdrlen(iScans);
     end
     v = eventRelated(v,params);
   end
@@ -289,6 +297,7 @@ try
 catch
   % some error, switch back to original path
   cd(curpwd);
+  keyboard
   return
 end
 
@@ -508,7 +517,7 @@ end
 tempFreq = [];
 for iParameter = 1:length(runInfo.protocol.pardefs)
   if ~isempty(strfind(lower(runInfo.protocol.pardefs{iParameter}),'temp')) && ~isempty(strfind(lower(runInfo.protocol.pardefs{iParameter}),'freq'))
-    tempFreq = runInfo.protocol.pars(iParameter,:)
+    tempFreq = runInfo.protocol.pars(iParameter,:);
   end
 end
 if ~isempty(tempFreq)
@@ -524,7 +533,7 @@ stimvols = motexGetStimvolFromStimNums(runInfo,stimNumsInRunOrder);
 
 % figure out how long hdrlen should be - based on
 % a GCaMP decay time of about 0.8s
-GCaMPDecay = 0.8;
+GCaMPDecay = 3.0;
 stimvolsOnset.hdrlen = median(stimLen)*frameTime + GCaMPDecay;
 stimvols.hdrlen = frameTime + GCaMPDecay;
 
