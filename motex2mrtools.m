@@ -40,11 +40,11 @@ end
 getArgs(varargin,{'dataPath=~/data/motex/raw'},'suppressUnknownArgMessage',true);
 
 % get info about raw data
-d = getMotexRawInfo(dataDir,'dataPath',dataPath);
+d = motexGetRawInfo(dataDir,'dataPath',dataPath);
 if isempty(d), return, end
 
 % get the log information
-[d tf] = getMotexLogs(d,varargin{:});
+[d tf] = motexGetLogs(d,varargin{:});
 if ~tf, return, end
 
 % get the stimulusInfo
