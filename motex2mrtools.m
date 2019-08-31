@@ -146,7 +146,7 @@ end
 description = {};
 stimfileName = {};
 sessionDescription = '';
-runConcatAndEventRelated = {};
+concatAndEventRelatedInfo = {};
 startScanNum = 1;endScanNum = 0;
 % cycle through each session and run we are doing and save raw data
 for iSession = d.sessionNum
@@ -228,7 +228,7 @@ for iSession = d.sessionNum
 
     % keep track of whether to run concat and event-related and which scans to do it over
     if isfield(runInfo,'stimvols')
-      runConcatAndEventRelated{end+1} = [startScanNum endScanNum runInfo.stimvols.hdrlen];
+      concatAndEventRelatedInfo{end+1} = [startScanNum endScanNum runInfo.stimvols.hdrlen];
     end
     startScanNum = endScanNum+1;
 
@@ -262,37 +262,77 @@ try
   end
   % save the full d structure
   save(fullfile(etcPath,'rawInfo.mat'),'d');
-  % run concatenation and event-related as needed
-  for iConcatAndEventRelated = 1:length(runConcatAndEventRelated)
-    % do concatenation
-    v = viewSet(v,'curGroup','Raw');
-    [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
-    params.filterType = 'Detrend only';
-    params.description = 'Concatenation of [x...x]';
-    params.scanList = runConcatAndEventRelated{iConcatAndEventRelated}(1):runConcatAndEventRelated{iConcatAndEventRelated}(2);
-    params = mlrFixDescriptionInParams(params);
-    % get the tSeries name for the concat
-    params.tseriesFile = {};
-    for iScan = 1:length(params.scanList)
-      params.tseriesFile{iScan} = viewGet(v,'tseriesFile',params.scanList(iScan));
+
+  % run different analysis depending on type of scan
+  if strcmp(lower(stimulusType),'retinotopy')
+    iRunNum = 1;
+    % make averages for each stimulus type
+    for iSession = d.sessionNum
+      for iRun = d.runNum{iSession}
+	% get runInfo
+	runInfo = d.runInfo{iSession}{iRun};
+	% get the starting scan numer
+	startScan = concatAndEventRelatedInfo{iRunNum}(1);
+	iRunNum = iRunNum + 1;
+	% make averages over each direction
+	for iDir = 1:length(runInfo.retinotopy.dirs)
+	  % get which scans have the same direction and are shown at > 0 contrast
+	  scanList = startScan + find(runInfo.retinotopy.dir == runInfo.retinotopy.dirs(iDir) & (runInfo.retinotopy.contrast ~= 0)) - 1;
+	  % get default parameters
+	  [v params] = averageTSeries(v,[],'justGetParams=1','defaultParams=1','scanList',scanList);
+	  % set the name of the average
+	  params.description = sprintf('Retinotopy dir: %i deg [x...x]',runInfo.retinotopy.dirs(iDir));
+	  params = mlrFixDescriptionInParams(params);
+	  % run the average
+	  v = averageTSeries(v,params);
+	end
+	% run the one at 0 contrast
+	scanList = startScan + find(runInfo.retinotopy.contrast == 0) - 1;
+	% get default parameters
+	[v params] = averageTSeries(v,[],'justGetParams=1','defaultParams=1','scanList',scanList);
+	% set the name of the average
+	params.description = sprintf('Retinotopy 0 contrast [x...x]');
+	params = mlrFixDescriptionInParams(params);
+	% run the average
+	v = averageTSeries(v,params);
+      end
     end
-    v = concatTSeries(v,params);
-    % extract hdrlen
-    hdrlen(iConcatAndEventRelated) = runConcatAndEventRelated{iConcatAndEventRelated}(3);
-  end
-  % run event-related on the concatenated scans above
-  if ~isempty(runConcatAndEventRelated)
-    % do event-related
-    v = viewSet(v,'curGroup','Concatenation');
-    v = viewSet(v,'curScan',viewGet(v,'nScans'));
-    [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
-    % set the hdrlen
-    for iScans = 1:length(params.scanNum)
-      params.scanParams{iScans}.hdrlen = hdrlen(iScans);
+    keyboard
+  else
+    % run concatenation and event-related as needed
+    for iConcatAndEventRelated = 1:length(concatAndEventRelatedInfo)
+      % do concatenation
+      v = viewSet(v,'curGroup','Raw');
+      [v params] = concatTSeries(v,[],'justGetParams=1','defaultParams=1');
+      params.filterType = 'Detrend only';
+      params.description = 'Concatenation of [x...x]';
+      params.scanList = concatAndEventRelatedInfo{iConcatAndEventRelated}(1):concatAndEventRelatedInfo{iConcatAndEventRelated}(2);
+      params = mlrFixDescriptionInParams(params);
+      % get the tSeries name for the concat
+      params.tseriesFile = {};
+      for iScan = 1:length(params.scanList)
+	params.tseriesFile{iScan} = viewGet(v,'tseriesFile',params.scanList(iScan));
+      end
+      v = concatTSeries(v,params);
+      % extract hdrlen
+      hdrlen(iConcatAndEventRelated) = concatAndEventRelatedInfo{iConcatAndEventRelated}(3);
     end
-    v = eventRelated(v,params);
+    % run event-related on the concatenated scans above
+    if ~isempty(concatAndEventRelatedInfo)
+      % do event-related
+      v = viewSet(v,'curGroup','Concatenation');
+      v = viewSet(v,'curScan',viewGet(v,'nScans'));
+      [v params] = eventRelated(v,[],'justGetParams=1','defaultParams=1');
+      % set the hdrlen
+      for iScans = 1:length(params.scanNum)
+	params.scanParams{iScans}.hdrlen = hdrlen(iScans);
+      end
+      v = eventRelated(v,params);
+    end
   end
-  deleteView(v);
+  
+  % quit the view and mrTools
+p  deleteView(v);
   mrQuit(0);
 catch
   % some error, switch back to original path
@@ -331,6 +371,9 @@ for iSession = d.sessionNum
       case {'manual'}
         [tf runInfo] = getMotexStimvolManual(runInfo,varargin{:}); 
 	if ~tf, return, end
+      case {'retinotopy'}
+        [tf runInfo] = getMotexStimvolRetinotopy(runInfo,varargin{:}); 
+	if ~tf, return, end
       case {'miniblock'}
         [tf runInfo] = getMotexStimvolMiniblock(runInfo); 
 	if ~tf, return, end
@@ -345,6 +388,44 @@ for iSession = d.sessionNum
 end
 
 % success
+tf = true;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    getMotexStimvolRetinotopy    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [tf runInfo] = getMotexStimvolRetinotopy(runInfo,varargin)
+
+% default failure
+tf = false;
+
+getArgs(varargin,{},'suppressUnknownArgMessage',true);
+
+% just put the beginning volume for each trial. This is in case
+% there is any variance in time between the stimulus starts and 
+% when the camera starts acquiring
+for iTrial = 1:runInfo.photoDiodeTimes.nTrials
+  % find when the stimulus started this trial
+  trialStartTime = runInfo.photoDiodeTimes.trialStartTime(iTrial);
+  % find out the times of the camera acquisition
+  cameraTimes = runInfo.acqMeanTime(runInfo.whichCameraOn == iTrial);
+  % find the closest match for this event
+  [timeDiff cameraFrame] = min(abs(trialStartTime-cameraTimes));
+  % make sure we are not more than half a camera frame away
+  if timeDiff > (runInfo.cameraFrameLen/2)
+    disp(sprintf('(motex2mrtools:getMotexStimvolManual) Stimulus time: %f on trial %i is %f from a camera acquistion which is more than half the frame time',stimTimes{iStimType}(iStim),iTrial,timeDiff));
+    keyboard
+  end
+  % record this in stimvol
+  stimvols.stimvol{iTrial} = cameraFrame;
+end
+
+% label
+stimvols.labels = {'trialStart'};
+stimvols.hdrlen = runInfo.retinotopy.stimDur;
+% pack into return structure
+runInfo.stimvols = stimvols;
+
+% true
 tf = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -636,58 +717,107 @@ getArgs(varargin,{'stimulusType=miniblock','stimDir=/Volumes/GoogleDrive/My Driv
 % default failure
 tf = false;
 
-% if this is a manual stimulus type then don't do anything and return
-if ~isempty(findstr('manual',stimulusType))
-  disp(sprintf('(motex2mrtools:getMotexStimulusInfo) Manual stimulus type, not trying to load any stimulus info'));
+% do different things depending on what stimulust type setting we have
+if ~isempty(findstr('miniblock',stimulusType))
+  % get stimulusInfo for each run we are doing
+  for iSession = d.sessionNum
+    for iRun = d.runNum{iSession}
+      % load the stimulusInfo 
+      stimfile = fullfile(stimDir,stimulusType,'stimulusInfo.mat');
+      if ~isfile(stimfile)
+	disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find file: %s',stimfile));
+	return
+      end
+
+      % load stimfile
+      s = load(stimfile);
+      if ~isfield(s,'e')
+	disp(sprintf('(motex2mrtools:getMotexStimuli) Missing expermient variable e in stimfile: %s',stimfile));
+	return
+      end
+
+      % save the stimulusInfo
+      d.runInfo{iSession}{iRun}.stimulusInfo = s.e;
+
+      % check for readme
+      readmeFile = fullfile(stimDir,stimulusType,'readme.txt');
+      if ~isfile(readmeFile)
+	disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find readme file: %s',readmeFile));
+	return
+      end
+      
+      % load the readme
+      fReadme = fopen(readmeFile);
+      if fReadme == 0
+	disp(sprintf('(motex2mrtools:getMotexStimuli) Could not open readme file: %s',readmeFile));
+	return
+      end
+    
+      % read the file
+      s = textscan(fReadme,'%d %s %s');
+      fclose(fReadme);
+    
+      % save the readme
+      d.runInfo{iSession}{iRun}.readme.frameNum = s{1};
+      d.runInfo{iSession}{iRun}.readme.type = s{2};
+      d.runInfo{iSession}{iRun}.readme.filename = s{3};
+      
+    end
+  end
+elseif ~isempty(findstr('retinotopy',stimulusType))
+  for iSession = d.sessionNum
+    for iRun = d.runNum{iSession}
+      % shortcut to runinfo
+      runInfo = d.runInfo{iSession}{iRun};
+      % display the parameters for this retinotopy run
+      dirParam = nan;orientParam = nan;contrastParam = nan;stimDur = nan;
+      for iParam = 1:runInfo.protocol.npars
+	disp(sprintf('%s:\t %s',runInfo.protocol.pardefs{iParam},mlrnum2str(runInfo.protocol.pars(iParam,:),'sigfigs=0','tabs=true')));
+	% save the numbers of important parameters
+	if ~isempty(strfind(lower(runInfo.protocol.pardefs{iParam}),'direction'))
+	  dirParam = iParam;
+	elseif ~isempty(strfind(lower(runInfo.protocol.pardefs{iParam}),'orientation'))
+	  orientParam = iParam;
+	elseif ~isempty(strfind(lower(runInfo.protocol.pardefs{iParam}),'contrast'))
+	  contrastParam = iParam;
+	elseif ~isempty(strfind(lower(runInfo.protocol.pardefs{iParam}),'stimulus duration'))
+	  stimDurParam = iParam;
+	end
+      end  
+      if isnan(orientParam) || isnan(dirParam) || isnan(contrastParam) || isnan(stimDurParam)
+	disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find Direction of motion and orientation parameters in protocol file - is this really a retinotopy run?'));
+	keyboard
+      end
+      % get the length of the stimulus, all three should be the same
+      runInfo.retinotopy.stimDur = median(runInfo.protocol.pars(stimDurParam,:));
+      % now get one direction was run for each 
+      runInfo.retinotopy.dir = nan(1,runInfo.nFiles);
+      [seqNumRows seqNumCols] = size(runInfo.protocol.seqnums);
+      for iRow = 1:seqNumRows
+	for iCol = 1:seqNumCols
+	  % get this sequence num
+	  seqNum = runInfo.protocol.seqnums(iRow,iCol);
+	  % get parameters for this trial
+	  thisOrient = runInfo.protocol.pars(orientParam,iRow);
+	  thisDir = runInfo.protocol.pars(dirParam,iRow);
+	  thisContrast = runInfo.protocol.pars(contrastParam,iRow);
+	  % save in structure
+	  runInfo.retinotopy.dir(seqNum) = r2d((thisOrient-1)*pi/2 + ((thisDir-1)/-2)*pi);
+	  runInfo.retinotopy.contrast(seqNum) = thisContrast;
+	end
+      end
+      % save the directions found in this run
+      runInfo.retinotopy.dirs = unique(runInfo.retinotopy.dir(runInfo.retinotopy.contrast~=0));
+      % save the changes
+      d.runInfo{iSession}{iRun} = runInfo;
+    end
+  end
+else
+  disp(sprintf('(motex2mrtools:getMotexStimulusInfo) %s stimulus type, not trying to load any stimulus info',stimulusType));
   tf = true;
   return
 end
 
-% get stimulusInfo for each run we are doing
-for iSession = d.sessionNum
-  for iRun = d.runNum{iSession}
-    % load the stimulusInfo 
-    stimfile = fullfile(stimDir,stimulusType,'stimulusInfo.mat');
-    if ~isfile(stimfile)
-      disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find file: %s',stimfile));
-      return
-    end
-
-    % load stimfile
-    s = load(stimfile);
-    if ~isfield(s,'e')
-      disp(sprintf('(motex2mrtools:getMotexStimuli) Missing expermient variable e in stimfile: %s',stimfile));
-      return
-    end
-
-    % save the stimulusInfo
-    d.runInfo{iSession}{iRun}.stimulusInfo = s.e;
-
-    % check for readme
-    readmeFile = fullfile(stimDir,stimulusType,'readme.txt');
-    if ~isfile(readmeFile)
-      disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find readme file: %s',readmeFile));
-      return
-    end
-      
-    % load the readme
-    fReadme = fopen(readmeFile);
-    if fReadme == 0
-      disp(sprintf('(motex2mrtools:getMotexStimuli) Could not open readme file: %s',readmeFile));
-      return
-    end
-    
-    % read the file
-    s = textscan(fReadme,'%d %s %s');
-    fclose(fReadme);
-    
-    % save the readme
-    d.runInfo{iSession}{iRun}.readme.frameNum = s{1};
-    d.runInfo{iSession}{iRun}.readme.type = s{2};
-    d.runInfo{iSession}{iRun}.readme.filename = s{3};
-    
-  end
-end
 
 % success
 tf = true;

@@ -79,8 +79,8 @@ if ~isinf(runNum)
   d.runNum{1:length(d.sessionNum)} = runNum;
 else
   % figure out runs (i.e. get all runs for each session
-  for iSession = sessionNum
-    d.runNum{iSession} = 1:d.nRuns(sessionNum(iSession));
+  for iSession = 1:length(sessionNum)
+    d.runNum{sessionNum(iSession)} = 1:d.nRuns(sessionNum(iSession));
   end
 end
 

@@ -121,7 +121,7 @@ for iSession = 1:d.nSessions
     else
       disp(sprintf('Protocol: MISSING'));
     end
-    if ~isempty(d.runInfo{iSession}{iRun}.screenInfo)
+    if ~isempty(d.runInfo{iSession}{iRun}.screenInfo) && isfield(d.runInfo{iSession}{iRun}.screenInfo,'MonitorType')
       disp(sprintf('Screen: %s',d.runInfo{iSession}{iRun}.screenInfo.MonitorType));
     end
   end

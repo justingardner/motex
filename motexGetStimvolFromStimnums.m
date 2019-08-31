@@ -6,14 +6,17 @@
 %    purpose: Pass in runInfo and stimNums to get stimvols. used in motex2mrtools
 %        
 %
-function stimvols = motexGetStimvolFromStimnums(runInfo,stimNums)
+function stimvols = motexGetStimvolFromStimnums(runInfo,stimNums,varargin)
 
 % check arguments
 stimvols = [];
-if ~any(nargin == [2])
+if nargin < 2
   help motexGetStimvolFromStimnums
   return
 end
+  
+% get arguments
+getArgs(varargin,{'makeStimvolsFor',{'texGenType','texFolderName','texFamily','texAll'}});
 
 % make trial-by-trial stimvols
 for iTrial = 1:runInfo.nMiniblocks
@@ -64,8 +67,8 @@ for iTrial = 1:runInfo.nMiniblocks
   imageNums = stimNumsThisTrial(stimNumsThisTrial~=0);
   
   % now we are ready to make stimvols. We make them sorted for
-  % the following variables
-  makeStimvolsFor = {'texGenType','texFolderName','texFamily'};
+  % variables set in getArgs above - but making sure they exist
+  makeStimvolsFor = intersect(makeStimvolsFor,fieldnames(runInfo.stimulusInfo));
   for iSortType = 1:length(makeStimvolsFor)
     thisStimvols = {};
     % make the labels for what each type is

@@ -84,9 +84,14 @@ for iScan = 1:nScans
     runInfo = runInfo.runInfo;
     % remember which one is loaded
     currentRunInfo = [sessionNum runNum];
+    % get a new field which sorts by texFamily_texGenType_texFolderName
+    for iTrial = 1:length(runInfo.stimulusInfo.texFamily)
+      runInfo.stimulusInfo.texAll{iTrial} = sprintf('%s_%s_%s',runInfo.stimulusInfo.texFamily{iTrial},runInfo.stimulusInfo.texGenType{iTrial},runInfo.stimulusInfo.texFolderName{iTrial});
+    end
+
     % now ask user to choose reordering
     paramsInfo{1} = {'type',putOnTopOfList('inOrder',fieldnames(runInfo.stimNums))};
-    paramsInfo{2} = {'sort',putOnTopOfList('texFolderName',setdiff(fieldnames(runInfo.stimvols),{'stimvol','labels'}))};
+    paramsInfo{2} = {'sort',putOnTopOfList('texAll',union(setdiff(fieldnames(runInfo.stimvols),{'stimvol','labels','hdrlen'}),'texAll'))};
     params = mrParamsDialog(paramsInfo,sprintf('Stimvols for session: %i run: %i',sessionNum,runNum));
     if isempty(params),return,end
     % get the stimvols

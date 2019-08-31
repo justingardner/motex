@@ -53,6 +53,7 @@ if strcmp(lower(dataName),'all')
       end
     end
   end
+  return;
 end
 
 
