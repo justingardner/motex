@@ -1,22 +1,22 @@
-% motexSetRetinotopyStimImages.m
+% motexGetRetinotopyStimImages.m
 %
-%      usage: motexSetRetinotopyStimImages()
+%      usage: motexGetRetinotopyStimImages()
 %         by: justin gardner
 %       date: 09/09/19
 %    purpose: 
 %
-function retval = motexSetRetinotopyStimImages(varargin)
+function retval = motexGetRetinotopyStimImages(varargin)
 
 getArgs(varargin,{'retinotopyImageSequenceFilename=~/docs/2019/motex/retinotopy/retinotopyImageSequence.mat','stimImageWidth=90'});
 
 % check for the retinotopy source data from Yuki
 if ~isfile(retinotopyImageSequenceFilename)
-  disp(sprintf('(motexSetRetinotopyStimImages) Could not find retinotopy image sequence: %s',retinotopyImageSequenceFilename));
+  disp(sprintf('(motexGetRetinotopyStimImages) Could not find retinotopy image sequence: %s',retinotopyImageSequenceFilename));
   return
 end
 
 % load the retinotopy source data from Yuki
-disppercent(-inf,'(motexSetRetinotopyStimImages) Loading original image sequence');
+disppercent(-inf,'(motexGetRetinotopyStimImages) Loading original image sequence');
 retinotopyImageSequence = load(retinotopyImageSequenceFilename);
 disppercent(inf);
 
@@ -31,7 +31,7 @@ stimImageHeight = round(originalHeight*stimImageWidth/originalWidth);
 [newX newY] = meshgrid(0:1/(stimImageHeight-1):1,0:1/(stimImageWidth-1):1);
 
 X1scale = nan(stimImageWidth,stimImageHeight,originalT);
-disppercent(-inf,'(motexSetRetinotopyStimImages) Scaling images');
+disppercent(-inf,'(motexGetRetinotopyStimImages) Scaling images');
 for iTime = 1:originalT
   X1scaled(:,:,iTime) = interp2(originalX,originalY,single(X1(:,:,iTime)),newX,newY,'nearest');
   disppercent(iTime/originalT);
