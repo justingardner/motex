@@ -19,21 +19,35 @@ end
 
 % parse arguments
 %getArgs(varargin,{'preProcessedDirs',{'/Volumes/tex/IMAGING/WIDEFIELD/'},'resFac=1'});
-getArgs(varargin,{'preProcessedDirs',{'~/data/motex/raw/retinotopy'},'resFac=1'});
+getArgs(varargin,{'preProcessedDirs',{'~/data/motex/raw/retinotopy'},'resFac=1','corAnalName=corAnal'});
 
 % check that the view sturcture has a retinotopy scan
 [tf v] = checkView(v);
 if ~tf,return,end
 
 % check retinotopy scans in averages
-[v retinotopyInfo] = checkRetinotopyScans(v);
+[v retinotopyInfo] = checkRetinotopyScans(v,corAnalName);
 if ~any(retinotopyInfo.isret),return,end
 
 % now try to load pre-processed retinotopy information
 retinotopyInfo = loadPreProcessedRetinotopy(retinotopyInfo,preProcessedDirs);
 
+% now run retinotopy through the automatic visual field sign code
+if ~isempty(retinotopyInfo.corAnal) && ~isempty(retinotopyInfo.preProcessed)
+  % get visual_field which I do not yet know how to compute from pre_processed file
+  visual_field = retinotopyInfo.preProcessed{1}.visual_field;
+  % compute visual field sign
+  [v retinotopyInfo.corAnal] = computeVisualFieldSign(v,retinotopyInfo.corAnal,visual_field,resFac);
+end
+
 % make pre-processed maps
 retinotopyInfo = makePreProcessedMaps(retinotopyInfo,resFac);
+
+% load map overlays into corAnal analysis
+if ~isempty(retinotopyInfo.corAnal)
+  % add map overlay computed for h/v field map from correlation analysis
+  addMapOverlays(v,retinotopyInfo.corAnal);
+end
 
 % convert into rois for MLR
 rois = makeMLRRois(v,retinotopyInfo);
@@ -41,6 +55,105 @@ rois = makeMLRRois(v,retinotopyInfo);
 % and save the rois
 saveROI(v,rois);
 keyboard
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%    addMapOverlays    %
+%%%%%%%%%%%%%%%%%%%%%%%%
+function v = addMapOverlays(v,maps)
+
+% make hMap overlay
+o.name = 'hMap';
+o.groupName = viewGet(v,'GroupName');
+o.params = viewGet(v,'overlayParams');
+o.range = [min(maps.hMap(:)) max(maps.hMap(:))];
+for iScan = 1:viewGet(v,'nScans')
+  o.data{iScan} = maps.hMap;
+end
+[tf o] = isoverlay(o);
+% and add to analysis
+v = viewSet(v,'newOverlay',o);
+
+% make vMap overlay
+o.name = 'vMap';
+o.groupName = viewGet(v,'GroupName');
+o.params = viewGet(v,'overlayParams');
+o.range = [min(maps.vMap(:)) max(maps.vMap(:))];
+for iScan = 1:viewGet(v,'nScans')
+  o.data{iScan} = maps.vMap;
+end
+[tf o] = isoverlay(o);
+v = viewSet(v,'newOverlay',o);
+
+% save the analysis
+saveAnalysis(v,'corAnal')
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    computeVIsualFieldSign    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [v corAnal] = computeVisualFieldSign(v,corAnal,visual_field,resFac)
+
+% make sure we have all the scans we need
+missingDirs = setdiff([0 90 180 270],corAnal.dirs);
+if ~isempty(missingDirs)
+  disp(sprintf('(motexRet:computeVisualFieldSign) Need to have corAnal run on directions: %s',num2str(missingDirs)));
+  return
+end
+
+% convert overlays into complex numbers
+corAnal.complexMap{1}{1} = makeComplexMap(first(find(corAnal.dirs==0)),corAnal);
+corAnal.complexMap{1}{2} = makeComplexMap(first(find(corAnal.dirs==180)),corAnal);
+corAnal.complexMap{2}{1} = makeComplexMap(first(find(corAnal.dirs==90)),corAnal);
+corAnal.complexMap{2}{2} = makeComplexMap(first(find(corAnal.dirs==270)),corAnal);
+
+% filter the maps
+if 0
+  corAnal.mapFilterSigma = 10;
+  for i = 1:2
+    for j = 1:2
+      corAnal.complexMap{i}{j} = spatialGaussianFilter(corAnal.complexMap{i}{j},corAnal.mapFilterSigma);
+    end
+  end
+end
+
+% check for functions form Moha
+if isempty(which('func_getRetinoMaps'))
+  disp(sprintf('(motexRet:computeVisualFieldSign) Colud not find function func_getRetinoMaps'));
+  return
+end
+
+% run the retino maps function
+[corAnal.hMap, corAnal.vMap, corAnal.visualFieldSign, corANal.thresholdMap] = func_getRetinoMaps(corAnal.complexMap,visual_field,resFac);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    spatialGaussianFilter  %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function map = spatialGaussianFilter(map,filterSigma)
+
+% make x and y corrdinates in pixel dimensions with
+% 0,0 in the center
+[ylen xlen] = size(map);
+filterX = (0:(xlen-1)) - (xlen-1)/2;
+filterY = (0:(ylen-1)) - (ylen-1)/2;
+[filterX filterY] = meshgrid(filterX,filterY);
+
+% compute gaussian of appropriate filterSigma (in pixels)
+% on this grid to make gaussian filter
+filter = exp(-(filterX.^2+filterY.^2)./filterSigma^2);
+
+% now compute convolution in the frequency domain
+% FIX, FIX, FIX, this does not seem to work as expected - why not?
+%map = ifft2(fft2(map).*fft2(filter));
+% this works, but for some reason blocks off a corner of the image and is slow
+map = conv2(map,filter,'same');
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%    makeComplexMap    %
+%%%%%%%%%%%%%%%%%%%%%%%%
+function complexMap = makeComplexMap(scanNum,corAnal)
+
+% convert amplitude and phase back to a complex number
+[a b] = pol2cart(squeeze(corAnal.ph(scanNum,:,:)),squeeze(corAnal.amp(scanNum,:,:)));
+complexMap = complex(a,b);
 
 %%%%%%%%%%%%%%%%%%%%%
 %    makeMLRRois    %
@@ -123,7 +236,7 @@ for iPreProcessed = 1:length(retinotopyInfo.preProcessed)
   for iConnComp = 1:connComp.NumObjects
     [x y] = ind2sub(connComp.ImageSize,connComp.PixelIdxList{iConnComp});
     p.regions.nCoords(iConnComp) = length(x);
-%    p.regions.coords{iConnComp} = [x(:)';y(:)'];
+    % note that x and y are flipped for MLR
     p.regions.coords{iConnComp} = [y(:)';x(:)'];
   end
   % reorder by size (since V1 is probably the largest connected region
@@ -198,7 +311,7 @@ disppercent(inf);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    checkRetinotopyScans    %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [v retinotopyInfo] = checkRetinotopyScans(v)
+function [v retinotopyInfo] = checkRetinotopyScans(v,corAnalName)
 
 % set groupName
 retinotopyInfo.groupName = viewGet(v,'groupName');
@@ -267,6 +380,32 @@ disppercent(inf);
 
 % number of scans
 retinotopyInfo.n = length(retinotopyInfo.isret);
+
+% now check to see if there is a pre-computed retinotopy analysis
+retinotopyInfo.corAnal = [];
+corAnalFullName = setext(fullfile(viewGet(v,'datadir'),'corAnal',corAnalName),'mat');
+if ~isfile(corAnalFullName)
+  disp(sprintf('(motexRet:checkRetinotopyScans) No %s in %s',corAnalName,viewGet(v,'GroupName')));
+  return
+end
+
+% ok, load the analysis
+v = loadAnalysis(v,corAnalName);
+retinotopyInfo.corAnal.name = corAnalName;
+
+% now figure out which overlays are the important ones
+retinotopyInfo.corAnal.scans = find((retinotopyInfo.isret) & (retinotopyInfo.contrast ~= 0));
+retinotopyInfo.corAnal.dirs = retinotopyInfo.dir(retinotopyInfo.corAnal.scans);
+
+% and grab the overlays for those
+retinotopyInfo.corAnal.co = [];
+retinotopyInfo.corAnal.ph = [];
+retinotopyInfo.corAnal.amp = [];
+for iScan = retinotopyInfo.corAnal.scans
+  retinotopyInfo.corAnal.co(end+1,:,:) = viewGet(v,'overlayData',iScan,viewGet(v,'overlayNum','co'));
+  retinotopyInfo.corAnal.ph(end+1,:,:) = viewGet(v,'overlayData',iScan,viewGet(v,'overlayNum','ph'));
+  retinotopyInfo.corAnal.amp(end+1,:,:) = viewGet(v,'overlayData',iScan,viewGet(v,'overlayNum','amp'));
+end
 
 %%%%%%%%%%%%%%%%%%%
 %    checkView    %
