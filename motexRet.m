@@ -19,7 +19,7 @@ end
 
 % parse arguments
 %getArgs(varargin,{'preProcessedDirs',{'/Volumes/tex/IMAGING/WIDEFIELD/'},'resFac=1'});
-getArgs(varargin,{'preProcessedDirs',{'~/data/motex/raw/retinotopy'},'resFac=1','corAnalName=corAnal'});
+getArgs(varargin,{'preProcessedDirs',{'~/data/motex/raw/retinotopy'},'resFac=1','corAnalName=corAnal','saveCorAnalOverlays=0','savePreProcessedOverlays=0','makeROIs=0'});
 
 % check that the view sturcture has a retinotopy scan
 [tf v] = checkView(v);
@@ -32,28 +32,51 @@ if ~any(retinotopyInfo.isret),return,end
 % now try to load pre-processed retinotopy information
 retinotopyInfo = loadPreProcessedRetinotopy(retinotopyInfo,preProcessedDirs);
 
+% compute the maps from the pre-processed info
+if savePreProcessedOverlays || makeROIs
+  retinotopyInfo = makePreProcessedMaps(retinotopyInfo,resFac);
+end
+
 % now run retinotopy through the automatic visual field sign code
-if ~isempty(retinotopyInfo.corAnal) && ~isempty(retinotopyInfo.preProcessed)
-  % get visual_field which I do not yet know how to compute from pre_processed file
-  visual_field = retinotopyInfo.preProcessed{1}.visual_field;
-  % compute visual field sign
-  [v retinotopyInfo.corAnal] = computeVisualFieldSign(v,retinotopyInfo.corAnal,visual_field,resFac);
+if saveCorAnalOverlays
+  if ~isempty(retinotopyInfo.corAnal) && ~isempty(retinotopyInfo.preProcessed)
+    % get visual_field which I do not yet know how to compute from pre_processed file
+    visual_field = retinotopyInfo.preProcessed{1}.visual_field;
+    % compute visual field sign
+    [v retinotopyInfo.corAnal] = computeVisualFieldSign(v,retinotopyInfo.corAnal,visual_field,resFac);
+    % load map overlays into corAnal analysis
+    if ~isempty(retinotopyInfo.corAnal)
+      % add map overlay computed for h/v field map from correlation analysis
+      addMapOverlays(v,retinotopyInfo.corAnal);
+    end
+  end
 end
 
-% make pre-processed maps
-retinotopyInfo = makePreProcessedMaps(retinotopyInfo,resFac);
-
-% load map overlays into corAnal analysis
-if ~isempty(retinotopyInfo.corAnal)
-  % add map overlay computed for h/v field map from correlation analysis
-  addMapOverlays(v,retinotopyInfo.corAnal);
+% make pre-processed maps and save into MLR
+if savePreProcessedOverlays && ~isempty(retinotopyInfo.preProcessed)
+  % save the first pre-processed maps to MLR
+  addMapOverlays(v,retinotopyInfo.preProcessed{1});
 end
 
-% convert into rois for MLR
-rois = makeMLRRois(v,retinotopyInfo);
+if makeROIs
+  % convert into rois for MLR
+  rois = makeMLRRois(v,retinotopyInfo);
+  % and save the rois
+  saveROI(v,rois);
+end
 
-% and save the rois
-saveROI(v,rois);
+% now figure out what the stimImages should be for each
+% corAnal scan so that we can run pRF analysis
+addStimImages(v,retinotopyInfo);
+
+keyboard
+%%%%%%%%%%%%%%%%%%%%%%%
+%    addStimImages    %
+%%%%%%%%%%%%%%%%%%%%%%%
+function addStimImages(v,retinotopyInfo)
+
+% get the stim images
+stimImages = motexGetRetinotopyStimImages;
 keyboard
 
 %%%%%%%%%%%%%%%%%%%%%%%%
@@ -74,12 +97,37 @@ end
 v = viewSet(v,'newOverlay',o);
 
 % make vMap overlay
+o = [];
 o.name = 'vMap';
 o.groupName = viewGet(v,'GroupName');
 o.params = viewGet(v,'overlayParams');
 o.range = [min(maps.vMap(:)) max(maps.vMap(:))];
 for iScan = 1:viewGet(v,'nScans')
   o.data{iScan} = maps.vMap;
+end
+[tf o] = isoverlay(o);
+v = viewSet(v,'newOverlay',o);
+
+% make visualFieldSign overlay
+o = [];
+o.name = 'visualFieldSign';
+o.groupName = viewGet(v,'GroupName');
+o.params = viewGet(v,'overlayParams');
+o.range = [min(maps.visualFieldSign(:)) max(maps.visualFieldSign(:))];
+for iScan = 1:viewGet(v,'nScans')
+  o.data{iScan} = maps.visualFieldSign;
+end
+[tf o] = isoverlay(o);
+v = viewSet(v,'newOverlay',o);
+
+% make thresholdMap
+o = [];
+o.name = 'thresholdMap';
+o.groupName = viewGet(v,'GroupName');
+o.params = viewGet(v,'overlayParams');
+o.range = [min(maps.thresholdMap(:)) max(maps.thresholdMap(:))];
+for iScan = 1:viewGet(v,'nScans')
+  o.data{iScan} = maps.thresholdMap;
 end
 [tf o] = isoverlay(o);
 v = viewSet(v,'newOverlay',o);
@@ -122,7 +170,7 @@ if isempty(which('func_getRetinoMaps'))
 end
 
 % run the retino maps function
-[corAnal.hMap, corAnal.vMap, corAnal.visualFieldSign, corANal.thresholdMap] = func_getRetinoMaps(corAnal.complexMap,visual_field,resFac);
+[corAnal.hMap, corAnal.vMap, corAnal.visualFieldSign, corAnal.thresholdMap] = func_getRetinoMaps(corAnal.complexMap,visual_field,resFac);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %    spatialGaussianFilter  %

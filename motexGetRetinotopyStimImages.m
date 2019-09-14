@@ -7,36 +7,52 @@
 %
 function retval = motexGetRetinotopyStimImages(varargin)
 
-getArgs(varargin,{'retinotopyImageSequenceFilename=~/docs/2019/motex/retinotopy/retinotopyImageSequence.mat','stimImageWidth=90'});
+getArgs(varargin,{'retPath=~/docs/2019/motex/retinotopy/','originalFile=retinotopyImageSequence.mat','scaledFile=retinotopyImageSequenceSmall.mat','stimImageWidth=90','forceRescale=0'});
 
-% check for the retinotopy source data from Yuki
-if ~isfile(retinotopyImageSequenceFilename)
-  disp(sprintf('(motexGetRetinotopyStimImages) Could not find retinotopy image sequence: %s',retinotopyImageSequenceFilename));
+% see if we need to load original and rescale.
+if ~isfile(fullfile(retPath,scaledFile)) || forceRescale
+  % get full filename
+  originalFilename = fullfile(retPath,originalFile);
+  if ~isfile(originalFilename)
+    disp(sprintf('(motexGetRetinotopyStimImages) Could not find file: %s',originalFilename));
+    return
+  end
+  % load the retinotopy source data from Yuki
+  disppercent(-inf,sprintf('Loading original image sequence: %s',originalFilename));
+  retinotopyImageSequence = load(originalFilename);
+  disppercent(inf);
+
+  % scale images
+  retval.X1 = scaleImages(retinotopyImageSequence.imageSequenceX1,stimImageWidth);
+  retval.X2 = scaleImages(retinotopyImageSequence.imageSequenceX2,stimImageWidth);
+  retval.Y1 = scaleImages(retinotopyImageSequence.imageSequenceY1,stimImageWidth);
+  retval.Y2 = scaleImages(retinotopyImageSequence.imageSequenceY2,stimImageWidth);
+
+  % save it
+  save(fullfile(fileparts(retPath,scaledFile)),'retval');
+  
   return
 end
 
-% load the retinotopy source data from Yuki
-disppercent(-inf,'(motexGetRetinotopyStimImages) Loading original image sequence');
-retinotopyImageSequence = load(retinotopyImageSequenceFilename);
-disppercent(inf);
+% just load the already scaled file
+load(fullfile(retPath,scaledFile));
 
-% easier names
-X1 = retinotopyImageSequence.imageSequenceX1;
-Y1 = retinotopyImageSequence.imageSequenceY1;
+
+%%%%%%%%%%%%%%%%%%%%%
+%    scaleImages    %
+%%%%%%%%%%%%%%%%%%%%%
+function scaledImages = scaleImages(originalImages,stimImageWidth)
 
 % scale down to a more useable size
-[originalHeight originalWidth originalT] = size(X1);
+[originalHeight originalWidth originalT] = size(originalImages);
 [originalX originalY] = meshgrid(0:1/(originalWidth-1):1,0:1/(originalHeight-1):1);
 stimImageHeight = round(originalHeight*stimImageWidth/originalWidth);
 [newX newY] = meshgrid(0:1/(stimImageHeight-1):1,0:1/(stimImageWidth-1):1);
 
-X1scale = nan(stimImageWidth,stimImageHeight,originalT);
+scaledImages = nan(stimImageWidth,stimImageHeight,originalT);
 disppercent(-inf,'(motexGetRetinotopyStimImages) Scaling images');
 for iTime = 1:originalT
-  X1scaled(:,:,iTime) = interp2(originalX,originalY,single(X1(:,:,iTime)),newX,newY,'nearest');
+  scaledImages(:,:,iTime) = interp2(originalX,originalY,single(originalImages(:,:,iTime)),newX,newY,'nearest');
   disppercent(iTime/originalT);
 end
 disppercent(inf);
-
-keyboard
-
