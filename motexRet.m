@@ -5,7 +5,7 @@
 %       date: 09/10/19
 %    purpose: To be run on mrTools mouse retinotopy data sets that have been run through motex2mrtools
 %
-%             cd ~/data/M190724_s5r1_2;
+%             cd ~/data/motex/M190724_s5r1_2;
 %             v = newView;
 %             motexRet(v);
 %
@@ -69,7 +69,6 @@ end
 % corAnal scan so that we can run pRF analysis
 addStimImages(v,retinotopyInfo);
 
-keyboard
 %%%%%%%%%%%%%%%%%%%%%%%
 %    addStimImages    %
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -77,7 +76,53 @@ function addStimImages(v,retinotopyInfo)
 
 % get the stim images
 stimImages = motexGetRetinotopyStimImages;
-keyboard
+
+% now go through the scans and add stimImages to the appropriate stim files
+X1scan = find(retinotopyInfo.isret & (retinotopyInfo.dir == 0) & (retinotopyInfo.contrast == 100));
+backupDir = addStimImageToStimFile(v,X1scan,stimImages.X1,[]);
+X2scan = find(retinotopyInfo.isret & (retinotopyInfo.dir == 180) & (retinotopyInfo.contrast == 100));
+addStimImageToStimFile(v,X2scan,stimImages.X2,backupDir);
+Y1scan = find(retinotopyInfo.isret & (retinotopyInfo.dir == 90) & (retinotopyInfo.contrast == 100));
+backupDir = addStimImageToStimFile(v,Y1scan,stimImages.Y1,backupDir);
+Y2scan = find(retinotopyInfo.isret & (retinotopyInfo.dir == 270) & (retinotopyInfo.contrast == 100));
+addStimImageToStimFile(v,Y2scan,stimImages.Y2,backupDir);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%    addStimImageToStimFile    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function backupDir = addStimImageToStimFile(v,scanNum,stimImage,backupDir)
+
+if isempty(scanNum),return,end
+
+% get the stimfileNames
+stimfileNames = viewGet(v,'stimfileName',scanNum);
+if isempty(stimfileNames),return,end
+
+% make a backupDir name if necessary
+if isempty(backupDir)
+  backupDir = sprintf('backup_%s_%s',datestr(now,'YYYYMMDD'),datestr(now,'HHMMSS'));
+  backupDir = fullfile(fileparts(stimfileNames{1}),backupDir);
+end
+
+% make directory for backups if necessary
+if ~isdir(backupDir)
+  mkdir(backupDir);
+end
+
+% now convert stimfiles
+disppercent(-inf,sprintf('(motexRet:addStimImageToStimFile) Adding stimImages to scan: %i',scanNum));
+for iStimfile = 1:length(stimfileNames)
+  % load the stimfile
+  stimfile = load(stimfileNames{iStimfile});
+  % copy the stimfile to the backup
+  backupName = fullfile(backupDir,getLastDir(stimfileNames{iStimfile}));
+  save(backupName,'-struct','stimfile'); 
+  % now add stimImage and save
+  stimfile.pRFStimImage = stimImage;
+  save(stimfileNames{iStimfile},'-struct','stimfile'); 
+  disppercent(iStimfile/length(stimfileNames));
+end
+disppercent(inf);
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %    addMapOverlays    %
