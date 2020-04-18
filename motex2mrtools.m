@@ -11,10 +11,18 @@
 %
 %             This function expects data to have been downloaded form the servers
 %             using getMotexData to the directory ~/data/motex/raw and will
-%             make the mrtools directory into ~/data/motex. This can be overwritten
-%             by doing
+%             make the mrtools directory into ~/data/motex. You should also
+%             have the directory ~/data/motex/Expt_stimuli hold the
+%             different experimental stimuli for miniblock etc. These are
+%             in the GoogleDrive folder, so can be setup ast follows:
 %
-%             motex2mrtools('M190718_RN','dataDir=from/path','toPath=to/path');
+% cd ~/data/motex
+% ln -s /Volumes/GoogleDrive/My\ Drive/docs/2019g/motex/Raw
+% ln -s /Volumes/GoogleDrive/My\ Drive/docs/2019g/motex/Expt_stimuli
+%
+%             You can override the default path above by doing:
+%
+%             motex2mrtools('M190718_RN','dataDir=from/path/raw','toPath=to/path','stimDir=pathto/Expt_stimuli');
 %
 %             The program also needs to know about what stimulus was given which is
 %             set by the stimulusType variable (which defaults to miniblock). You
@@ -23,7 +31,7 @@
 %             specify the time in seconds after the start of the trial when 
 %             each one of the stimNames stimuli occur. SO, for example, if you had
 %             the stimulus: 'texture' at 2.5s and 'phase-scramble' at 7.5s you would do
-%             
+%                 
 %             motex2mrtools('M190621_MA','sessionNum=1','runNum=1','stimulusType=manual','stimTimes',{2.5 7.5},'stimNames',{'texture' 'phase-scramble'});
 %
 function d = motex2mrtools(dataDir,varargin)
@@ -235,7 +243,8 @@ for iSession = d.sessionNum
   end
 end
 
-try
+%try
+
   % switch to directory
   curpwd = pwd;
   cd(sessionPath);
@@ -264,7 +273,7 @@ try
   save(fullfile(etcPath,'rawInfo.mat'),'d');
 
   % run different analysis depending on type of scan
-  if strcmp(lower(stimulusType),'retinotopy')
+  if strcmp(lower(d.stimulusType),'retinotopy')
     iRunNum = 1;
     % make averages for each stimulus type
     for iSession = d.sessionNum
@@ -332,14 +341,15 @@ try
   end
   
   % quit the view and mrTools
-p  deleteView(v);
+  deleteView(v);
   mrQuit(0);
-catch
+%catch
   % some error, switch back to original path
-  cd(curpwd);
-  keyboard
-  return
-end
+%  cd(curpwd);
+%  disp(sprintf('(motex2mrtools:motexMakeSession) Caught an error in make session'));
+%  keyboard
+%  return
+%end
 
 % switch back to original path
 cd(curpwd);
@@ -357,6 +367,9 @@ tf = false;
 
 % parse arguments
 getArgs(varargin,{'stimulusType=miniblock'},'suppressUnknownArgMessage',true);
+
+% keep stimulus type we are doing
+d.stimulusType = stimulusType;
 
 % cycle through each session and run we are doing
 for iSession = d.sessionNum
@@ -712,7 +725,7 @@ end
 function [d tf] = getMotexStimulusInfo(d,varargin)
 
 % arguments
-getArgs(varargin,{'stimulusType=miniblock','stimDir=/Volumes/GoogleDrive/My Drive/docs/2019/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
+getArgs(varargin,{'stimulusType=miniblock','stimDir=~/data/motex/Expt_stimuli'},'suppressUnknownArgMessage',true);
 
 % default failure
 tf = false;
@@ -724,6 +737,7 @@ if ~isempty(findstr('miniblock',stimulusType))
     for iRun = d.runNum{iSession}
       % load the stimulusInfo 
       stimfile = fullfile(stimDir,stimulusType,'stimulusInfo.mat');
+
       if ~isfile(stimfile)
 	disp(sprintf('(motex2mrtools:getMotexStimuli) Could not find file: %s',stimfile));
 	return
